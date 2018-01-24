@@ -22,6 +22,9 @@ class Parser(object):
                  ):
 
         self._global_step = 0
+        self._early_stop_count = 0
+        self._update = False
+        self._best_score = 0.
 
         self._masks_w = []
         self._masks_t = []
@@ -101,8 +104,8 @@ class Parser(object):
         lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
 
         embs_dep, embs_head = \
-            dy.rectify(dy.affine_transform([mlp_dep_bias, mlp_dep, lstm_outs])), \
-            dy.rectify(dy.affine_transform([mlp_head_bias, mlp_head, lstm_outs]))
+            utils.leaky_relu(dy.affine_transform([mlp_dep_bias, mlp_dep, lstm_outs])), \
+            utils.leaky_relu(dy.affine_transform([mlp_head_bias, mlp_head, lstm_outs]))
 
         if isTrain:
             embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)

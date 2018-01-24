@@ -53,3 +53,6 @@ def bilinear(x, W, y, input_size, seq_len, batch_size, num_outputs = 1, bias_x =
     # seq_len_y x seq_len_x if output_size == 1
     # seq_len_y x num_outputs x seq_len_x else
     return blin
+
+def leaky_relu(x):
+    return dy.bmax(.1 * x, x)

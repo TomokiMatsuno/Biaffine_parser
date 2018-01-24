@@ -1,5 +1,7 @@
 import pandas as pd
 
+import os
+
 from collections import Counter
 
 import config
@@ -55,3 +57,17 @@ class Dictionary(object):
             ret[-1].append(self.x2i[elem])
 
         return ret
+
+def make_dir(dir):
+    dir_num = 0
+    dir_valify = dir
+
+    while os.path.exists(dir_valify):
+        dir_valify = dir + str(dir_num)
+        dir_num += 1
+
+    os.makedirs(dir_valify)
+
+    return dir_valify
+
+

@@ -14,14 +14,17 @@ import config
 
 # files_train = glob.glob(paths.path2WSJ + '00/*')
 files_train = [f for f in glob.glob(paths.path2WSJ + '*/*')
-               if not ("/01/" in f or "/22/" in f or "/23/" in f or "/24/" in f)]
+               if not ("/01" in f or "/22" in f or "/23" in f or "/24" in f or "section" in f or "predPOS" in f)]
 # files_train = [f for f in glob.glob(paths.path2WSJ + '0[2-9]/*')]
-files_dev = glob.glob(paths.path2WSJ + '23/23_predPOS/*')
+if not config.isTest:
+    files_dev = glob.glob(paths.path2WSJ + 'wsj_predPOS/23*/*')
+else:
+    files_dev = [f for f in glob.glob(paths.path2WSJ + 'wsj_predPOS/*/*') if not "/23" in f]
 
 df_train = preprocess.files2DataFrame(files_train, '\t')
 df_dev = preprocess.files2DataFrame(files_dev, '\t')
-# df_train = preprocess.files2DataFrame(files_train[:1], '\t')
-# df_dev = preprocess.files2DataFrame(files_train[:1], '\t')
+#df_train = preprocess.files2DataFrame(files_train[:1], '\t')
+#df_dev = preprocess.files2DataFrame(files_dev[:1], '\t')
 
 indices, words, tags, heads, rels = \
     df_train[0].tolist(), \
@@ -111,20 +114,45 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
             # parser._trainer.update()
             parser.update_parameters()
             if step == len(word_ids) - 1:
-                print(step)
                 print(losses_value_arc)
             losses_arc = []
             dy.renew_cg()
             parser._global_step += 1
 
         if (not isTrain) and step == len(word_ids) - 1:
-            print(tot_cor_arc / tot_arc)
+            score = (tot_cor_arc / tot_arc)
+            print(score)
+            if score > parser._best_score:
+                parser._update = True
+                parser._early_stop_count = 0
+                parser._best_score = score
+            print(parser._best_score)
 
 
 for e in range(config.epoc):
+    print("epoc: ", e)
+
+    if config.isTest:
+        parser._pc.load(paths.save_file_directory + config.load_file + str(e))
+
+    parser._update = False
+
     isTrain = True
     train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain)
     isTrain = False
     train_dev(word_ids_dev, tag_ids_dev, head_ids_dev, rel_ids_dev, indices_dev, isTrain)
+
+    if e == 0:
+        dir_save = preprocess.make_dir(paths.save_file_directory)
+
+
+    if not config.isTest:
+        parser._pc.save(dir_save + "/" + config.save_file + str(parser._early_stop_count))
+        print("saved into: ", dir_save + "/" + config.save_file + str(parser._early_stop_count))
+
+    parser._early_stop_count += 1
+
+    if parser._early_stop_count > config.early_stop:
+        break
 
 print("succeed")

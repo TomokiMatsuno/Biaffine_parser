@@ -1,11 +1,11 @@
 input_dim = 100
 hidden_dim = 400
-pdrop = 0.1
-layers = 1
+pdrop = 0.33
+layers = 3
 mlp_dim = 500
 arc_dim = 500
 
-all_100 = True
+all_100 = not True
 if all_100:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
 
@@ -30,4 +30,10 @@ epsilon = 1e-12
 show_acc = 1000
 
 minimal_count = 2
+early_stop = 30
+save_file = "parameter"
+load_file_num = 0
+load_file = str(load_file_num) + "/parameter"
+
+isTest = False
 
