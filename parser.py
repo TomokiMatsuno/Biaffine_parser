@@ -24,6 +24,9 @@ class Parser(object):
         self._masks_w = []
         self._masks_t = []
 
+        self._vocab_size_w = word_size
+        self._vocab_size_t = tag_size
+
         rel_dim = mlp_dim - arc_dim
         self.mlp_dim = mlp_dim
         self.biaffine_bias_x_arc = biaffine_bias_x_arc
@@ -76,9 +79,12 @@ class Parser(object):
 
         preds_arc = []
         num_cor_arc = 0
-
-        embs_w = [self.lp_w[w] * mask_w for w, mask_w in zip(words, masks_w)]
-        embs_t = [self.lp_t[t] * mask_t for t, mask_t in zip(tags, masks_t)]
+        if isTrain:
+            embs_w = [self.lp_w[w if w < self._vocab_size_w else 0] * mask_w for w, mask_w in zip(words, masks_w)]
+            embs_t = [self.lp_t[t if t < self._vocab_size_t else 0] * mask_t for t, mask_t in zip(tags, masks_t)]
+        else:
+            embs_w = [self.lp_w[w if w < self._vocab_size_w else 0] for w in words]
+            embs_t = [self.lp_t[t if t < self._vocab_size_t else 0] for t in tags]
 
         lstm_ins = [dy.concatenate([emb_w, emb_t]) for emb_w, emb_t in zip(embs_w, embs_t)]
         lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))

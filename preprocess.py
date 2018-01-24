@@ -1,5 +1,8 @@
 import pandas as pd
 
+from collections import Counter
+
+import config
 
 def seq2ids(seq, indices):
     ret = []
@@ -14,7 +17,7 @@ def seq2ids(seq, indices):
 def files2DataFrame(files, delim):
     dfs = []
     for file in files:
-        dfs.append(pd.read_csv(file, delimiter=delim, header=None))
+        dfs.append(pd.read_csv(file, delimiter=delim, header=None, engine='python'))
     ret = pd.concat(dfs)
     return ret
 
@@ -22,6 +25,7 @@ def files2DataFrame(files, delim):
 class Dictionary(object):
 
     def __init__(self, seq, initial_entries=None):
+        self.cnt = Counter(seq)
         self.i2x = {}
         self.x2i = {}
         self.freezed = False
@@ -37,7 +41,7 @@ class Dictionary(object):
 
     def add_entry(self, elem):
         if elem not in self.x2i:
-            if not self.freezed:
+            if (self.cnt[elem] >= config.minimal_count and not self.freezed) or elem in self.initial_entries:
                 self.x2i[elem] = len(self.x2i)
                 self.i2x[len(self.i2x)] = elem
             else:

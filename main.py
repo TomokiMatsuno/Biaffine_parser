@@ -12,12 +12,12 @@ import preprocess
 import parser
 import config
 
-files_train = glob.glob(paths.path2WSJ + '00/*')
+files_train = glob.glob(paths.path2WSJ + '0[2-9]/*')
 files_dev = glob.glob(paths.path2WSJ + '23/*')
 
-df_train = preprocess.files2DataFrame(files_train[:90], '\t')
-# df_dev = preprocess.files2DataFrame(files_dev, '\t')
-df_dev = preprocess.files2DataFrame(files_train[90:], '\t')
+df_train = preprocess.files2DataFrame(files_train, '\t')
+df_dev = preprocess.files2DataFrame(files_dev, '\t')
+# df_dev = preprocess.files2DataFrame(files_train[90:], '\t')
 
 indices, words, tags, heads, rels = \
     df_train[0].tolist(), \
@@ -76,7 +76,8 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
     tot_arc = 0
     tot_cor_arc = 0
     step = 0
-    parser.embd_mask_generator(config.pdrop, indices)
+    parser._pdrop = config.pdrop * isTrain
+    parser.embd_mask_generator(parser._pdrop, indices)
 
     sent_ids = [i for i in range(len(word_ids))]
     if isTrain:
@@ -98,25 +99,24 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
         tot_cor_arc += num_cor_arc
         step += 1
 
-        if step % config.batch_size == 0 and isTrain:
+        if (step % config.batch_size == 0 or step == len(word_ids) - 1) and isTrain:
             losses_arc = dy.esum(losses_arc)
             losses_value_arc = losses_arc.value()
             losses_arc.backward()
             parser._trainer.update()
-            print(step)
-            print(losses_value_arc)
+            if step == len(word_ids) - 1:
+                print(step)
+                print(losses_value_arc)
             losses_arc = []
 
-        if (not isTrain):
-            if step % config.show_acc == 0:
-                print(tot_cor_arc / tot_arc)
+        if (not isTrain) and step == len(word_ids) - 1:
+            print(tot_cor_arc / tot_arc)
+
 
 for e in range(config.epoc):
     isTrain = True
     train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain)
     isTrain = False
     train_dev(word_ids_dev, tag_ids_dev, head_ids_dev, rel_ids_dev, indices_dev, isTrain)
-
-
 
 print("succeed")
