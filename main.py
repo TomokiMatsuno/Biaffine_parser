@@ -12,12 +12,16 @@ import preprocess
 import parser
 import config
 
-files_train = glob.glob(paths.path2WSJ + '0[2-9]/*')
-files_dev = glob.glob(paths.path2WSJ + '23/*')
+# files_train = glob.glob(paths.path2WSJ + '00/*')
+files_train = [f for f in glob.glob(paths.path2WSJ + '*/*')
+               if not ("/01/" in f or "/22/" in f or "/23/" in f or "/24/" in f)]
+# files_train = [f for f in glob.glob(paths.path2WSJ + '0[2-9]/*')]
+files_dev = glob.glob(paths.path2WSJ + '23/23_predPOS/*')
 
 df_train = preprocess.files2DataFrame(files_train, '\t')
 df_dev = preprocess.files2DataFrame(files_dev, '\t')
-# df_dev = preprocess.files2DataFrame(files_train[90:], '\t')
+# df_train = preprocess.files2DataFrame(files_train[:1], '\t')
+# df_dev = preprocess.files2DataFrame(files_train[:1], '\t')
 
 indices, words, tags, heads, rels = \
     df_train[0].tolist(), \
@@ -29,7 +33,7 @@ indices, words, tags, heads, rels = \
 indices_dev, words_dev, tags_dev, heads_dev, rels_dev = \
     df_dev[0].tolist(), \
     df_dev[1].tolist(), \
-    df_dev[3].tolist(), \
+    df_dev[10].tolist(), \
     df_dev[6].tolist(), \
     df_dev[7].tolist()
 
@@ -89,9 +93,10 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
                                                        head_ids[sent_id], rel_ids[sent_id], \
                                                        parser._masks_w[sent_id], parser._masks_t[sent_id]
 
-        if step % config.batch_size == 0 or not isTrain:
+        # if step % config.batch_size == 0 or not isTrain:
+        if not isTrain:
             dy.renew_cg()
-            losses_arc = []
+            # losses_arc = []
 
         loss_arc, preds_arc, num_cor_arc = parser.run(seq_w, seq_t, seq_h, seq_r, masks_w, masks_t, isTrain)
         losses_arc.append(dy.sum_batches(loss_arc))
@@ -103,11 +108,14 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
             losses_arc = dy.esum(losses_arc)
             losses_value_arc = losses_arc.value()
             losses_arc.backward()
-            parser._trainer.update()
+            # parser._trainer.update()
+            parser.update_parameters()
             if step == len(word_ids) - 1:
                 print(step)
                 print(losses_value_arc)
             losses_arc = []
+            dy.renew_cg()
+            parser._global_step += 1
 
         if (not isTrain) and step == len(word_ids) - 1:
             print(tot_cor_arc / tot_arc)

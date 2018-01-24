@@ -21,6 +21,8 @@ class Parser(object):
                  biaffine_bias_y_rel
                  ):
 
+        self._global_step = 0
+
         self._masks_w = []
         self._masks_t = []
 
@@ -35,7 +37,11 @@ class Parser(object):
         self.biaffine_bias_y_rel = biaffine_bias_y_rel
 
         self._pc = dy.ParameterCollection()
-        self._trainer = dy.AdadeltaTrainer(self._pc)
+
+        if config.use_annealing:
+            self._trainer = dy.AdamTrainer(self._pc, config.learning_rate, config.beta_1, config.beta_2, config.epsilon)
+        else:
+            self._trainer = dy.AdadeltaTrainer(self._pc)
 
         self.params = dict()
         self.lp_w = self._pc.add_lookup_parameters((word_size, input_dim))
@@ -60,11 +66,16 @@ class Parser(object):
     def embd_mask_generator(self, pdrop, indices):
         masks_w = np.random.binomial(1, 1 - pdrop, len(indices))
         masks_t = np.random.binomial(1, 1 - pdrop, len(indices))
-        scales = [3. / (2. * mask_w * mask_t + 1e-12) for mask_w, mask_t in zip(masks_w, masks_t)]
+        scales = [3. / (2. * mask_w + mask_t + 1e-12) for mask_w, mask_t in zip(masks_w, masks_t)]
         masks_w = [mask_w * scale for mask_w, scale in zip(masks_w, scales)]
         masks_t = [mask_t * scale for mask_t, scale in zip(masks_t, scales)]
         self._masks_w = preprocess.seq2ids(masks_w, indices)
         self._masks_t = preprocess.seq2ids(masks_t, indices)
+
+    def update_parameters(self):
+        if config.use_annealing:
+            self._trainer.learning_rate = config.learning_rate * config.decay ** (self._global_step / config.decay_steps)
+        self._trainer.update()
 
     def run(self, words, tags, heads, rels, masks_w, masks_t, isTrain):
         mlp_dep_bias = dy.parameter(self.mlp_dep_bias)
@@ -95,8 +106,6 @@ class Parser(object):
 
         if isTrain:
             embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
-
-        # def bilinear(x, W, y, input_size, seq_len, batch_size, num_outputs=1, bias_x=False, bias_y=False):
 
         logits_arc = utils.bilinear(embs_dep, W_arc, embs_head,
                                     self.mlp_dim, seq_len, config.batch_size, 1,
