@@ -9,6 +9,7 @@ class Parser(object):
     def __init__(self,
                  word_size,
                  tag_size,
+                 rel_size,
                  input_dim,
                  hidden_dim,
                  pdrop,
@@ -25,15 +26,18 @@ class Parser(object):
         self._early_stop_count = 0
         self._update = False
         self._best_score = 0.
+        self._best_score_las = 0.
 
         self._masks_w = []
         self._masks_t = []
 
         self._vocab_size_w = word_size
         self._vocab_size_t = tag_size
+        self._vocab_size_r = rel_size
 
-        rel_dim = mlp_dim - arc_dim
-        self.mlp_dim = mlp_dim
+        self._mlp_dim = mlp_dim
+        self._arc_dim = arc_dim
+        self._rel_dim = mlp_dim - arc_dim
         self.biaffine_bias_x_arc = biaffine_bias_x_arc
         self.biaffine_bias_y_arc = biaffine_bias_y_arc
         self.biaffine_bias_x_rel = biaffine_bias_x_rel
@@ -60,11 +64,10 @@ class Parser(object):
         self.mlp_dep_bias = self._pc.add_parameters(mlp_dim)
         self.mlp_head_bias = self._pc.add_parameters(mlp_dim)
 
-        self.W_arc = self._pc.add_parameters((arc_dim + biaffine_bias_y_arc, arc_dim + biaffine_bias_x_arc))
-        self.W_rel = self._pc.add_parameters((rel_dim + biaffine_bias_y_rel, rel_dim + biaffine_bias_x_rel))
+        self.W_arc = self._pc.add_parameters((self._arc_dim + biaffine_bias_y_arc, self._arc_dim + biaffine_bias_x_arc))
+        self.W_rel = self._pc.add_parameters(((self._rel_dim + biaffine_bias_y_rel) * self._vocab_size_r, self._rel_dim + biaffine_bias_x_rel))
 
         return
-
 
     def embd_mask_generator(self, pdrop, indices):
         masks_w = np.random.binomial(1, 1 - pdrop, len(indices))
@@ -86,13 +89,21 @@ class Parser(object):
         mlp_head_bias = dy.parameter(self.mlp_head_bias)
         mlp_head = dy.parameter(self.mlp_head)
         W_arc = dy.parameter(self.W_arc)
+        W_rel = dy.parameter(self.W_rel)
 
 
         #tokens in the sentence and root
         seq_len = len(words) + 1
 
         preds_arc = []
+        preds_rel = []
+
+        loss_arc = 0
+        loss_rel = 0
+
         num_cor_arc = 0
+        num_cor_rel = 0
+
         if isTrain:
             embs_w = [self.lp_w[w if w < self._vocab_size_w else 0] * mask_w for w, mask_w in zip(words, masks_w)]
             embs_t = [self.lp_t[t if t < self._vocab_size_t else 0] * mask_t for t, mask_t in zip(tags, masks_t)]
@@ -110,8 +121,11 @@ class Parser(object):
         if isTrain:
             embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
 
-        logits_arc = utils.bilinear(embs_dep, W_arc, embs_head,
-                                    self.mlp_dim, seq_len, config.batch_size, 1,
+        dep_arc, dep_rel = embs_dep[:self._arc_dim], embs_head[self._arc_dim:]
+        head_arc, head_rel = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
+
+        logits_arc = utils.bilinear(dep_arc, W_arc, head_arc,
+                                    self._arc_dim, seq_len, config.batch_size, 1,
                                     self.biaffine_bias_x_arc, self.biaffine_bias_y_arc)
         flat_logits_arc = dy.reshape(logits_arc, (seq_len, ), seq_len)
 
@@ -121,7 +135,28 @@ class Parser(object):
             preds_arc = logits_arc.npvalue().argmax(0)
             num_cor_arc = np.sum(np.equal(preds_arc[1:], heads))
 
-        return loss_arc, preds_arc, num_cor_arc
+        if not config.las:
+            return loss_arc, num_cor_arc, num_cor_rel
+
+        logits_rel = utils.bilinear(dep_rel, W_rel, head_rel,
+                                    self._rel_dim, seq_len, 1, self._vocab_size_r,
+                                    self.biaffine_bias_x_rel, self.biaffine_bias_y_rel)
+        flat_logits_rel = dy.reshape(logits_rel, (seq_len, self._vocab_size_r), seq_len)
+
+        partial_rel_logits = dy.pick_batch(flat_logits_rel, [0] + heads if isTrain else [0] + preds_arc)
+
+        if isTrain:
+            loss_rel = dy.sum_batches(dy.pickneglogsoftmax_batch(partial_rel_logits, [0] + rels))
+        else:
+            preds_rel = partial_rel_logits.npvalue().argmax(0)
+            num_cor_rel = np.sum(np.equal(preds_rel[1:], rels))
+        return loss_arc + loss_rel, num_cor_arc, num_cor_rel
+
+
+
+
+
+
 
 
 

@@ -2,18 +2,19 @@ input_dim = 100
 hidden_dim = 400
 pdrop = 0.33
 layers = 3
-mlp_dim = 500
+mlp_dim = 600
 arc_dim = 500
 
 all_100 = not True
 if all_100:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
+    mlp_dim += 100
 
 
 biaffine_bias_x_arc = True
 biaffine_bias_y_arc = False
 biaffine_bias_x_rel = True
-biaffine_bias_y_rel = False
+biaffine_bias_y_rel = True
 
 epoc = 1000
 batch_size = 32
@@ -36,4 +37,6 @@ load_file_num = 0
 load_file = str(load_file_num) + "/parameter"
 
 isTest = False
+
+las = True
 

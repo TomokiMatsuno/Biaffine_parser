@@ -65,6 +65,7 @@ head_ids_dev = preprocess.seq2ids(heads_dev, indices_dev)
 parser = parser.Parser(
     len(wd.i2x),
     len(td.i2x),
+    len(rd.i2x),
     config.input_dim,
     config.hidden_dim,
     config.pdrop,
@@ -79,9 +80,11 @@ parser = parser.Parser(
 
 
 def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
-    losses_arc = []
-    tot_arc = 0
+    losses = []
+    tot_tokens = 0
     tot_cor_arc = 0
+    tot_cor_rel = 0
+
     step = 0
     parser._pdrop = config.pdrop * isTrain
     parser.embd_mask_generator(parser._pdrop, indices)
@@ -99,41 +102,49 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
         # if step % config.batch_size == 0 or not isTrain:
         if not isTrain:
             dy.renew_cg()
-            # losses_arc = []
 
-        loss_arc, preds_arc, num_cor_arc = parser.run(seq_w, seq_t, seq_h, seq_r, masks_w, masks_t, isTrain)
-        losses_arc.append(dy.sum_batches(loss_arc))
-        tot_arc += len(seq_w)
+        loss, num_cor_arc, num_cor_rel = parser.run(seq_w, seq_t, seq_h, seq_r, masks_w, masks_t, isTrain)
+        losses.append(dy.sum_batches(loss))
+        tot_tokens += len(seq_w)
         tot_cor_arc += num_cor_arc
+        tot_cor_rel += num_cor_rel
+
         step += 1
 
         if (step % config.batch_size == 0 or step == len(word_ids) - 1) and isTrain:
-            losses_arc = dy.esum(losses_arc)
-            losses_value_arc = losses_arc.value()
-            losses_arc.backward()
+            losses = dy.esum(losses)
+            losses_value_arc = losses.value()
+            losses.backward()
             # parser._trainer.update()
             parser.update_parameters()
             if step == len(word_ids) - 1:
                 print(losses_value_arc)
-            losses_arc = []
+            losses = []
             dy.renew_cg()
             parser._global_step += 1
 
         if (not isTrain) and step == len(word_ids) - 1:
-            score = (tot_cor_arc / tot_arc)
+            score = (tot_cor_arc / tot_tokens)
+            score_label = (tot_cor_rel / tot_tokens)
             print(score)
+            print(score_label)
             if score > parser._best_score:
                 parser._update = True
                 parser._early_stop_count = 0
                 parser._best_score = score
+
+            if score_label > parser._best_score_label:
+                parser._best_score_label = score_label
+
             print(parser._best_score)
+            print(parser._best_score_label)
 
 
 for e in range(config.epoc):
     print("epoc: ", e)
 
     if config.isTest:
-        parser._pc.load(paths.save_file_directory + config.load_file + str(e))
+        parser._pc.populate(paths.save_file_directory + config.load_file + str(e))
 
     parser._update = False
 
@@ -142,11 +153,9 @@ for e in range(config.epoc):
     isTrain = False
     train_dev(word_ids_dev, tag_ids_dev, head_ids_dev, rel_ids_dev, indices_dev, isTrain)
 
-    if e == 0:
-        dir_save = preprocess.make_dir(paths.save_file_directory)
-
-
     if not config.isTest:
+        if e == 0:
+            dir_save = preprocess.make_dir(paths.save_file_directory)
         parser._pc.save(dir_save + "/" + config.save_file + str(parser._early_stop_count))
         print("saved into: ", dir_save + "/" + config.save_file + str(parser._early_stop_count))
 
