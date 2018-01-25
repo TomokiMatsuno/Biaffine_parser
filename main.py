@@ -138,11 +138,11 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
                 parser._early_stop_count = 0
                 parser._best_score = score
 
-            if score_label > parser._best_score_label:
-                parser._best_score_label = score_label
+            if score_label > parser._best_score_las:
+                parser._best_score_las = score_label
 
             print(parser._best_score)
-            print(parser._best_score_label)
+            print(parser._best_score_las)
 
 print(timer.from_prev())
 
