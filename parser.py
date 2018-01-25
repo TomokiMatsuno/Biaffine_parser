@@ -72,7 +72,7 @@ class Parser(object):
         #
         # self.W_arc = self._pc.add_parameters((self._arc_dim + biaffine_bias_y_arc, self._arc_dim + biaffine_bias_x_arc))
         # self.W_rel = self._pc.add_parameters(((self._rel_dim + biaffine_bias_y_rel) * self._vocab_size_r, self._rel_dim + biaffine_bias_x_rel))
-        if config.isTEST:
+        if config.isTest:
             self.LSTM_builders = []
             f = dy.VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
             b = dy.VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
@@ -196,18 +196,13 @@ class Parser(object):
         if not config.las:
             return loss_arc, num_cor_arc, num_cor_rel
 
-        loss_arc.npvalue()
-
         logits_rel = utils.bilinear(dep_rel, W_rel, head_rel,
                                     self._rel_dim, seq_len, 1, self._vocab_size_r,
                                     self.biaffine_bias_x_rel, self.biaffine_bias_y_rel)
 
-        logits_rel.npvalue()
         flat_logits_rel = dy.reshape(logits_rel, (seq_len, self._vocab_size_r), seq_len)
-        flat_logits_rel.npvalue()
 
         partial_rel_logits = dy.pick_batch(flat_logits_rel, [0] + heads if isTrain else [0] + preds_arc)
-        partial_rel_logits.npvalue()
 
         if isTrain:
             loss_rel = dy.sum_batches(dy.pickneglogsoftmax_batch(partial_rel_logits, [0] + rels))

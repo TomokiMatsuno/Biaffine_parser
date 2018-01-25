@@ -11,6 +11,9 @@ import paths
 import preprocess
 import parser
 import config
+import timer
+
+timer = timer.Timer()
 
 # files_train = glob.glob(paths.path2WSJ + '00/*')
 files_train = [f for f in glob.glob(paths.path2WSJ + '*/*')
@@ -95,6 +98,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
 
     # for seq_w, seq_t, seq_h, seq_r in zip(word_ids, tag_ids, head_ids, rel_ids):
     for sent_id in sent_ids:
+
         seq_w, seq_t, seq_h, seq_r, masks_w, masks_t = word_ids[sent_id], tag_ids[sent_id], \
                                                        head_ids[sent_id], rel_ids[sent_id], \
                                                        parser._masks_w[sent_id], parser._masks_t[sent_id]
@@ -112,6 +116,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
         step += 1
 
         if (step % config.batch_size == 0 or step == len(word_ids) - 1) and isTrain:
+            # print(step, "\t/\t", len(sent_ids), flush=True)
             losses = dy.esum(losses)
             losses_value_arc = losses.value()
             losses.backward()
@@ -139,6 +144,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
             print(parser._best_score)
             print(parser._best_score_label)
 
+print(timer.from_prev())
 
 for e in range(config.epoc):
     print("epoc: ", e)
@@ -150,8 +156,11 @@ for e in range(config.epoc):
 
     isTrain = True
     train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain)
+    timer.from_prev()
+
     isTrain = False
     train_dev(word_ids_dev, tag_ids_dev, head_ids_dev, rel_ids_dev, indices_dev, isTrain)
+    timer.from_prev()
 
     if not config.isTest:
         if e == 0:
