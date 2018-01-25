@@ -21,10 +21,10 @@ if not config.isTest:
 else:
     files_dev = [f for f in glob.glob(paths.path2WSJ + 'wsj_predPOS/*/*') if not "/23" in f]
 
+# df_train = preprocess.files2DataFrame(files_train, '\t')
+# df_dev = preprocess.files2DataFrame(files_dev, '\t')
 df_train = preprocess.files2DataFrame(files_train, '\t')
 df_dev = preprocess.files2DataFrame(files_dev, '\t')
-#df_train = preprocess.files2DataFrame(files_train[:1], '\t')
-#df_dev = preprocess.files2DataFrame(files_dev[:1], '\t')
 
 indices, words, tags, heads, rels = \
     df_train[0].tolist(), \

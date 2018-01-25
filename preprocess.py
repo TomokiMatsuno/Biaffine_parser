@@ -70,4 +70,3 @@ def make_dir(dir):
 
     return dir_valify
 
-
