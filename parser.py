@@ -20,7 +20,8 @@ class Parser(object):
                  biaffine_bias_x_arc,
                  biaffine_bias_y_arc,
                  biaffine_bias_x_rel,
-                 biaffine_bias_y_rel
+                 biaffine_bias_y_rel,
+                 embs_word=None
                  ):
 
         self._global_step = 0
@@ -52,7 +53,10 @@ class Parser(object):
             self._trainer = dy.AdadeltaTrainer(self._pc)
 
         self.params = dict()
-        self.lp_w = self._pc.add_lookup_parameters((word_size, input_dim), init=dy.ConstInitializer(0.))
+        if embs_word is None:
+            self.lp_w = self._pc.add_lookup_parameters((word_size, input_dim), init=dy.ConstInitializer(0.))
+        else:
+            self.lp_w = self._pc.lookup_parameters_from_numpy(embs_word)
         self.lp_t = self._pc.add_lookup_parameters((tag_size, input_dim), init=dy.ConstInitializer(0.))
         self.emb_root = self._pc.add_lookup_parameters((1, hidden_dim * 2))
 

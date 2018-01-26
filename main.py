@@ -1,12 +1,12 @@
-#library with acronym
+# library with acronym
 import pandas as pd
 import numpy as np
 import dynet as dy
 
-#public library
+# public library
 import glob
 
-#my library
+# my library
 import paths
 import preprocess
 import parser
@@ -31,22 +31,24 @@ df_dev = preprocess.files2DataFrame(files_dev, '\t')
 
 indices, words, tags, heads, rels = \
     df_train[0].tolist(), \
-    df_train[1].tolist(), \
+    [w.lower() for w in df_train[1].tolist()], \
     df_train[3].tolist(), \
     df_train[6].tolist(), \
     df_train[7].tolist()
 
 indices_dev, words_dev, tags_dev, heads_dev, rels_dev = \
     df_dev[0].tolist(), \
-    df_dev[1].tolist(), \
+    [w.lower() for w in df_dev[1].tolist()], \
     df_dev[10].tolist(), \
     df_dev[6].tolist(), \
     df_dev[7].tolist()
 
 wd, td, rd = \
-    preprocess.Dictionary(words), \
+    preprocess.Dictionary(words, paths.pret_file), \
     preprocess.Dictionary(tags), \
     preprocess.Dictionary(rels)
+
+embs_word = wd.get_pret_embs()
 
 wd.add_entries(words_dev)
 td.add_entries(tags_dev)
@@ -78,7 +80,8 @@ parser = parser.Parser(
     config.biaffine_bias_x_arc,
     config.biaffine_bias_y_arc,
     config.biaffine_bias_x_rel,
-    config.biaffine_bias_y_rel
+    config.biaffine_bias_y_rel,
+    embs_word
 )
 
 
@@ -144,19 +147,18 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
             print(parser._best_score)
             print(parser._best_score_las)
 
-print(timer.from_prev())
+timer.from_prev()
 
 for e in range(config.epoc):
     print("epoc: ", e)
 
+    parser._update = False
     if config.isTest:
         parser._pc.populate(paths.save_file_directory + config.load_file + str(e))
-
-    parser._update = False
-
-    isTrain = True
-    train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain)
-    timer.from_prev()
+    else:
+        isTrain = True
+        train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain)
+        timer.from_prev()
 
     isTrain = False
     train_dev(word_ids_dev, tag_ids_dev, head_ids_dev, rel_ids_dev, indices_dev, isTrain)
@@ -165,6 +167,7 @@ for e in range(config.epoc):
     if not config.isTest:
         if e == 0:
             dir_save = preprocess.make_dir(paths.save_file_directory)
+            preprocess.save_codes(dir_save)
         parser._pc.save(dir_save + "/" + config.save_file + str(parser._early_stop_count))
         print("saved into: ", dir_save + "/" + config.save_file + str(parser._early_stop_count))
 

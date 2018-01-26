@@ -5,7 +5,7 @@ layers = 3
 mlp_dim = 600
 arc_dim = 500
 
-all_100 = True
+all_100 = not True
 if all_100:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
     mlp_dim += 100
