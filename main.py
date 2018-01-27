@@ -44,6 +44,7 @@ indices_dev, words_dev, tags_dev, heads_dev, rels_dev = \
     df_dev[6].tolist(), \
     df_dev[7].tolist()
 
+
 wd, td, rd = \
     preprocess.Dictionary(words, paths.pret_file), \
     preprocess.Dictionary(tags), \
@@ -85,6 +86,7 @@ parser = parser.Parser(
     embs_word
 )
 
+parser._punct_id = rd.x2i['punct']
 
 def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
     losses = []
@@ -113,7 +115,14 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
 
         loss, num_cor_arc, num_cor_rel = parser.run(seq_w, seq_t, seq_h, seq_r, masks_w, masks_t, isTrain)
         losses.append(dy.sum_batches(loss))
-        tot_tokens += len(seq_w)
+
+        punct_count = 0
+
+        for r in seq_r:
+            if r == parser._punct_id:
+                punct_count += 1
+
+        tot_tokens += len(seq_w) - punct_count
         tot_cor_arc += num_cor_arc
         tot_cor_rel += num_cor_rel
 

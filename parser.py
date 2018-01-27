@@ -30,6 +30,8 @@ class Parser(object):
         self._best_score = 0.
         self._best_score_las = 0.
 
+        self._punct_id = 0
+
         self._masks_w = []
         self._masks_t = []
 
@@ -137,8 +139,11 @@ class Parser(object):
         W_arc = dy.parameter(self.W_arc)
         W_rel = dy.parameter(self.W_rel)
 
+
         #tokens in the sentence and root
         seq_len = len(words) + 1
+
+        punct_mask = np.array([1 if rel != self._punct_id else 0 for rel in rels])
 
         preds_arc = []
         preds_rel = []
@@ -191,7 +196,7 @@ class Parser(object):
 
         if not isTrain:
             preds_arc = logits_arc.npvalue().argmax(0)
-            num_cor_arc = np.sum(np.equal(preds_arc[1:], heads))
+            num_cor_arc = np.sum(np.equal(np.equal(preds_arc[1:], heads), punct_mask))
 
         if not config.las:
             return loss_arc, num_cor_arc, num_cor_rel
@@ -208,5 +213,5 @@ class Parser(object):
             loss_rel = dy.sum_batches(dy.pickneglogsoftmax_batch(partial_rel_logits, [0] + rels))
         else:
             preds_rel = partial_rel_logits.npvalue().argmax(0)
-            num_cor_rel = np.sum(np.equal(preds_rel[1:], rels))
+            num_cor_rel = np.sum(np.equal(np.equal(preds_rel[1:], rels), punct_mask))
         return loss_arc + loss_rel, num_cor_arc, num_cor_rel
