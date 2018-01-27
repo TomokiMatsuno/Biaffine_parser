@@ -4,6 +4,7 @@ import numpy as np
 import os
 import shutil
 import glob
+import sys
 
 from collections import Counter
 
@@ -53,9 +54,12 @@ class Dictionary(object):
                     self.i2x.append(elem)
             self.words_in_train = set(self.i2x)
         else:
+            unk_count = 0
             for ent in seq:
                 if ent not in self.x2i:
                     self.x2i[ent] = self.x2i['UNK']
+                    unk_count += 1
+            ahaha = 0
 
     def add_entry(self, elem):
         if elem not in self.x2i:
@@ -127,3 +131,8 @@ def save_codes(directory):
     for pycode in python_codes:
         shutil.copy2(pycode, directory)
 
+def out2file():
+    orig_out = sys.stdout
+    filename = 'dev_result.txt' if not config.isTest else 'test_result.txt'
+    f = open(filename, 'w')
+    sys.stdout = f

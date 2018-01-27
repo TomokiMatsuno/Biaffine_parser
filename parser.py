@@ -58,7 +58,8 @@ class Parser(object):
         else:
             self.lp_w = self._pc.lookup_parameters_from_numpy(embs_word)
         self.lp_t = self._pc.add_lookup_parameters((tag_size, input_dim), init=dy.ConstInitializer(0.))
-        self.emb_root = self._pc.add_lookup_parameters((1, hidden_dim * 2))
+        self.emb_root = self._pc.add_lookup_parameters((2, input_dim))
+
 
         # if config.isTest:
         #     self.l2r_lstm = dy.VanillaLSTMBuilder(layers, input_dim * 2, hidden_dim, self._pc)
@@ -128,20 +129,6 @@ class Parser(object):
             self._trainer.learning_rate = config.learning_rate * config.decay ** (self._global_step / config.decay_steps)
         self._trainer.update()
 
-    def _add_pret_words(self, pret_file):
-        self._words_in_train_data = self._vocab_size_w
-        print('#words in training set:', self._words_in_train_data)
-        words_in_train_data = set(self._id2word)
-        with open(pret_file) as f:
-            for line in f.readlines():
-                line = line.strip().split()
-                if line:
-                    word = line[0]
-                    if word not in words_in_train_data:  # add words in pret_file which do not occur in train_file to id2word
-                        self._id2word.append(word)
-
-    # print 'Total words:', len(self._id2word)
-
     def run(self, words, tags, heads, rels, masks_w, masks_t, isTrain):
         mlp_dep_bias = dy.parameter(self.mlp_dep_bias)
         mlp_dep = dy.parameter(self.mlp_dep)
@@ -163,15 +150,24 @@ class Parser(object):
         num_cor_rel = 0
 
         if isTrain:
-            embs_w = [self.lp_w[w if w < self._vocab_size_w else 0] * mask_w for w, mask_w in zip(words, masks_w)]
-            embs_t = [self.lp_t[t if t < self._vocab_size_t else 0] * mask_t for t, mask_t in zip(tags, masks_t)]
+            # embs_w = [self.lp_w[w if w < self._vocab_size_w else 0] * mask_w for w, mask_w in zip(words, masks_w)]
+            # embs_t = [self.lp_t[t if t < self._vocab_size_t else 0] * mask_t for t, mask_t in zip(tags, masks_t)]
+            embs_w = [self.lp_w[w] * mask_w for w, mask_w in zip(words, masks_w)]
+            embs_t = [self.lp_t[t] * mask_t for t, mask_t in zip(tags, masks_t)]
+            embs_w = [self.emb_root[0] * masks_t[-1]] + embs_w
+            embs_t = [self.emb_root[1] * masks_w[-1]] + embs_t
+
         else:
-            embs_w = [self.lp_w[w if w < self._vocab_size_w else 0] for w in words]
-            embs_t = [self.lp_t[t if t < self._vocab_size_t else 0] for t in tags]
+            # embs_w = [self.lp_w[w if w < self._vocab_size_w else 0] for w in words]
+            # embs_t = [self.lp_t[t if t < self._vocab_size_t else 0] for t in tags]
+            embs_w = [self.lp_w[w] for w in words]
+            embs_t = [self.lp_t[t] for t in tags]
+            embs_w = [self.emb_root[0]] + embs_w
+            embs_t = [self.emb_root[1]] + embs_t
 
         lstm_ins = [dy.concatenate([emb_w, emb_t]) for emb_w, emb_t in zip(embs_w, embs_t)]
         # lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
-        lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.biLSTM(self.LSTM_builders, lstm_ins, None, self._pdrop, self._pdrop))
+        lstm_outs = dy.concatenate_cols(utils.biLSTM(self.LSTM_builders, lstm_ins, None, self._pdrop, self._pdrop))
 
         if isTrain:
             lstm_outs = dy.dropout(lstm_outs, self._pdrop)
@@ -183,7 +179,7 @@ class Parser(object):
         if isTrain:
             embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
 
-        dep_arc, dep_rel = embs_dep[:self._arc_dim], embs_head[self._arc_dim:]
+        dep_arc, dep_rel = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
         head_arc, head_rel = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
 
         logits_arc = utils.bilinear(dep_arc, W_arc, head_arc,

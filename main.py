@@ -14,6 +14,7 @@ import config
 import timer
 
 timer = timer.Timer()
+# preprocess.out2file()
 
 # files_train = glob.glob(paths.path2WSJ + '00/*')
 files_train = [f for f in glob.glob(paths.path2WSJ + '*/*')
@@ -155,6 +156,7 @@ for e in range(config.epoc):
     parser._update = False
     if config.isTest:
         parser._pc.populate(paths.save_file_directory + config.load_file + str(e))
+        print("populated from:\t", paths.save_file_directory + config.load_file + str(e))
     else:
         isTrain = True
         train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain)
