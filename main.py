@@ -76,6 +76,7 @@ parser = parser.Parser(
     config.input_dim,
     config.hidden_dim,
     config.pdrop,
+    config.pdrop_embs,
     config.layers,
     config.mlp_dim,
     config.arc_dim,
@@ -88,6 +89,14 @@ parser = parser.Parser(
 
 parser._punct_id = rd.x2i['punct']
 
+punct_count = 0
+for r in rels:
+    if r == 'punct':
+        punct_count += 1
+
+print(punct_count / len(rels))
+
+
 def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
     losses = []
     tot_tokens = 0
@@ -96,7 +105,8 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
 
     step = 0
     parser._pdrop = config.pdrop * isTrain
-    parser.embd_mask_generator(parser._pdrop, indices)
+    parser._pdrop_embs = config.pdrop_embs * isTrain
+    parser.embd_mask_generator(parser._pdrop_embs, indices)
 
     sent_ids = [i for i in range(len(word_ids))]
     if isTrain:

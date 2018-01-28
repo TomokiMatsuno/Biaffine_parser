@@ -14,6 +14,7 @@ class Parser(object):
                  input_dim,
                  hidden_dim,
                  pdrop,
+                 pdrop_embs,
                  layers,
                  mlp_dim,
                  arc_dim,
@@ -60,7 +61,7 @@ class Parser(object):
         else:
             self.lp_w = self._pc.lookup_parameters_from_numpy(embs_word)
         self.lp_t = self._pc.add_lookup_parameters((tag_size, input_dim), init=dy.ConstInitializer(0.))
-        self.emb_root = self._pc.add_lookup_parameters((2, input_dim))
+        self.emb_root = self._pc.add_lookup_parameters((2, input_dim), init=dy.ConstInitializer(0.))
 
 
         # if config.isTest:
@@ -71,6 +72,7 @@ class Parser(object):
         #     self.r2l_lstm = utils.orthonormal_VanillaLSTMBuilder(layers, input_dim * 2, hidden_dim, self._pc)
 
         self._pdrop = pdrop
+        self._pdrop_embs = pdrop_embs
 
         # self.mlp_dep = self._pc.add_parameters((mlp_dim, hidden_dim * 2))
         # self.mlp_head = self._pc.add_parameters((mlp_dim, hidden_dim * 2))
@@ -112,8 +114,10 @@ class Parser(object):
         # self.mlp_rel_size = mlp_rel_size
         # self.dropout_mlp = dropout_mlp
 
-        self.W_arc = self._pc.add_parameters((arc_dim, self._arc_dim + 1), init=dy.ConstInitializer(0.))
-        self.W_rel = self._pc.add_parameters((self._vocab_size_r * (self._rel_dim + 1), self._rel_dim + 1), init=dy.ConstInitializer(0.))
+        self.W_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim + 1),
+                                             init=dy.ConstInitializer(0.))
+        self.W_rel = self._pc.add_parameters((self._vocab_size_r * (self._rel_dim + 1), self._rel_dim + 1),
+                                             init=dy.ConstInitializer(0.))
 
         return
 
@@ -172,6 +176,7 @@ class Parser(object):
 
         lstm_ins = [dy.concatenate([emb_w, emb_t]) for emb_w, emb_t in zip(embs_w, embs_t)]
         # lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
+        # lstm_outs = dy.concatenate_cols(utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
         lstm_outs = dy.concatenate_cols(utils.biLSTM(self.LSTM_builders, lstm_ins, None, self._pdrop, self._pdrop))
 
         if isTrain:
