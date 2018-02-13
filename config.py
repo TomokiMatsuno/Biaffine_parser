@@ -1,6 +1,6 @@
 input_dim = 100
 hidden_dim = 400
-pdrop = 0.1
+pdrop = 0.33
 pdrop_embs = 0.33
 layers = 3
 mlp_dim = 600
@@ -22,7 +22,7 @@ batch_size = 32
 
 use_annealing = True
 learning_rate = 0.002
-decay = 0.9
+decay = 0.75
 # decay_steps = num_sent_in_iter // batch_size
 decay_steps = 5000
 beta_1 = .9

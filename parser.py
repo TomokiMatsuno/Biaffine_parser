@@ -177,7 +177,7 @@ class Parser(object):
         lstm_ins = [dy.concatenate([emb_w, emb_t]) for emb_w, emb_t in zip(embs_w, embs_t)]
         # lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
         # lstm_outs = dy.concatenate_cols(utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
-        lstm_outs = dy.concatenate_cols(utils.biLSTM(self.LSTM_builders, lstm_ins, None, self._pdrop, self._pdrop))
+        lstm_outs = dy.concatenate_cols(utils.biLSTM(self.LSTM_builders, lstm_ins, 1, self._pdrop, self._pdrop))
 
         if isTrain:
             lstm_outs = dy.dropout(lstm_outs, self._pdrop)

@@ -107,9 +107,9 @@ def orthonormal_initializer(output_size, input_size):
 
 def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
     for fb, bb in builders:
-        f, b = fb.initial_state(), bb.initial_state()
         fb.set_dropouts(dropout_x, dropout_h)
         bb.set_dropouts(dropout_x, dropout_h)
+        f, b = fb.initial_state(), bb.initial_state()
         if batch_size is not None:
             fb.set_dropout_masks(batch_size)
             bb.set_dropout_masks(batch_size)
