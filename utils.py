@@ -3,11 +3,11 @@ import numpy as np
 
 
 def bilstm(l2rlstm, r2llstm, inputs, pdrop):
+    l2rlstm.set_dropouts(pdrop)
+    r2llstm.set_dropouts(pdrop)
+
     s_l2r_0 = l2rlstm.initial_state()
     s_r2l_0 = r2llstm.initial_state()
-
-    l2rlstm.set_dropouts(pdrop, pdrop)
-    r2llstm.set_dropouts(pdrop, pdrop)
 
     s_l2r = s_l2r_0
     s_r2l = s_r2l_0
@@ -104,6 +104,19 @@ def orthonormal_initializer(output_size, input_size):
         Q = np.random.randn(input_size, output_size) / np.sqrt(output_size)
     return np.transpose(Q.astype(np.float32))
 
+
+# def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
+#     for fb, bb in builders:
+#         f, b = fb.initial_state(), bb.initial_state()
+#         fb.set_dropouts(dropout_x, dropout_h)
+#         bb.set_dropouts(dropout_x, dropout_h)
+#         if batch_size is not None:
+#             fb.set_dropout_masks(batch_size)
+#             bb.set_dropout_masks(batch_size)
+#         fs, bs = f.transduce(inputs), b.transduce(reversed(inputs))
+#         inputs = [dy.concatenate([f,b]) for f, b in zip(fs, reversed(bs))]
+#     return inputs
+#
 
 def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
     for fb, bb in builders:

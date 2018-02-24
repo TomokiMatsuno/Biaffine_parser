@@ -21,13 +21,73 @@ def seq2ids(seq, indices):
     return ret
 
 
-def files2DataFrame(files, delim):
+def files2sents(path, indices):
+    files = glob.glob(path)
     dfs = []
     for file in files:
-        dfs.append(pd.read_csv(file, delimiter=delim, header=None, engine='python'))
-    ret = pd.concat(dfs)
+        dfs.append(pd.read_csv(file, comment='#', delimiter='\t', header=None))
+    df = pd.concat(dfs)
+
+    ret = []
+    for idx in indices:
+        # ret.append(df.iloc[:, [idx]].tolist())
+        ret.append(df[idx].tolist())
+
     return ret
 
+
+def sents2dicts(sents_train, sents_val):
+    dicts = []
+    for sidx in range(len(sents_train)):
+        dicts.append(Dictionary(sents_train[sidx]))
+        dicts[-1].add_entries(sents_val[sidx])
+    return dicts
+
+
+def sents2ids(sents, dicts, indices, no_dict=None):
+    ids = []
+    for didx in range(len(dicts)):
+        if no_dict is not None and didx in no_dict:
+            ids.append(seq2ids(sents[didx], indices))
+        else:
+            ids.append(dicts[didx].sent2ids(sents[didx], indices))
+
+    return ids
+
+
+
+# def files2DataFrame(files, delim):
+#     dfs = []
+#     for file in files:
+#         dfs.append(pd.read_csv(file, delimiter=delim, header=None, engine='python'))
+#     ret = pd.concat(dfs)
+#     return ret
+#
+#
+# def files2sents(files):
+#     if not config.small_data:
+#         # df_train = preprocess.files2DataFrame(files_train, '\t')
+#         # df_dev = preprocess.files2DataFrame(files_dev, '\t')
+#         df = files2DataFrame(files, '\t')
+#
+#         indices, words, tags, heads, rels = \
+#             df[0].tolist(), \
+#             [w.lower() for w in df[1].tolist()], \
+#             df[3].tolist(), \
+#             df[6].tolist(), \
+#             df[7].tolist()
+#
+#     if config.small_data:
+#         df = files2DataFrame(files[:1], '\t')
+#
+#         indices, words, tags, heads, rels = \
+#             df[0].tolist(), \
+#             [w.lower() for w in df[1].tolist()], \
+#             df[3].tolist(), \
+#             df[6].tolist(), \
+#             df[7].tolist()
+#
+#     return indices, words, tags, heads, rels
 
 class Dictionary(object):
 
@@ -131,8 +191,14 @@ def save_codes(directory):
     for pycode in python_codes:
         shutil.copy2(pycode, directory)
 
-def out2file():
+def print2filecons(string):
+    print(string)
+    out2file(string)
+
+def out2file(string):
     orig_out = sys.stdout
     filename = 'dev_result.txt' if not config.isTest else 'test_result.txt'
-    f = open(filename, 'w')
+    f = open(filename, 'a')
     sys.stdout = f
+    print(string)
+    sys.stdout = orig_out
