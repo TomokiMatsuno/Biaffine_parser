@@ -115,7 +115,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
             dy.renew_cg()
             parser._global_step += 1
 
-        if (not isTrain) and step == len(word_ids[:1]):
+        if (not isTrain) and step == len(word_ids):
             assert tot_cor_arc <= tot_tokens, "tot_cor_arc > tot_tokens"
             score = (tot_cor_arc / tot_tokens)
             assert tot_cor_rel <= tot_tokens, "tot_cor_rel > tot_tokens"

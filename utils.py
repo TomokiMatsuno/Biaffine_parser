@@ -65,13 +65,13 @@ def word_dep(inter_dep, intra_dep, bi_chunk, chunk_heads, B_tag_idx):
 
 
 def align_word_chunk(bi_chunk, B_tag_idx):
-    word2chunk = []
+    word2chunk = [0]
 
     chunk_idx = 0
-    for bi in bi_chunk:
-        word2chunk.append(chunk_idx)
+    for bi in bi_chunk[1:]:
         if bi == B_tag_idx:
             chunk_idx += 1
+        word2chunk.append(chunk_idx)
 
     return word2chunk
 

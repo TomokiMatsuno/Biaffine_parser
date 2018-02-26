@@ -80,33 +80,6 @@ class Parser(object):
         self._pdrop_embs = pdrop_embs
         self._pdrop_lstm = pdrop_lstm
 
-        # self.mlp_dep = self._pc.add_parameters((mlp_dim, hidden_dim * 2))
-        # self.mlp_head = self._pc.add_parameters((mlp_dim, hidden_dim * 2))
-        # self.mlp_dep_bias = self._pc.add_parameters(mlp_dim)
-        # self.mlp_head_bias = self._pc.add_parameters(mlp_dim)
-        #
-        # self.W_arc = self._pc.add_parameters((self._arc_dim + biaffine_bias_y_arc, self._arc_dim + biaffine_bias_x_arc))
-        # self.W_rel = self._pc.add_parameters(((self._rel_dim + biaffine_bias_y_rel) * self._vocab_size_r, self._rel_dim + biaffine_bias_x_rel))
-        # if config.isTest:
-        #     self.LSTM_builders = []
-        #     f = dy.VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
-        #     b = dy.VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
-        #
-        #     self.LSTM_builders.append((f, b))
-        #     for i in range(layers - 1):
-        #         f = dy.VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-        #         b = dy.VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-        #         self.LSTM_builders.append((f, b))
-        # else:
-        #     self.LSTM_builders = []
-        #     f = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
-        #     b = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
-        #
-        #     self.LSTM_builders.append((f, b))
-        #     for i in range(layers - 1):
-        #         f = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-        #         b = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-        #         self.LSTM_builders.append((f, b))
         self.LSTM_Builders_word = self.init_LSTMBuilders(config.layers_word, input_dim, hidden_dim)
         self.LSTM_Builders_chunk = self.init_LSTMBuilders(config.layers_chunk, hidden_dim, hidden_dim)
 
@@ -325,7 +298,7 @@ class Parser(object):
         else:
             preds_arc = logits_arc.npvalue().argmax(0)
             # num_cor_arc = np.sum(np.equal(preds_arc[1:], heads_inter))
-            res_arc = utils.word_dep(preds_arc[1:], preds_arc_intra, bi_chunk if isTrain else preds_chunk, chunk_heads, self._B_tag_id)
+            res_arc = utils.word_dep(preds_arc[1:], preds_arc_intra, preds_chunk, chunk_heads, self._B_tag_id)
             if len(res_arc) != len(heads):
                 print('error!')
                 return loss_arc, num_cor_arc, num_cor_rel
