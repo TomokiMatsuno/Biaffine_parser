@@ -1,6 +1,81 @@
 import dynet as dy
 import numpy as np
 
+# id of B tag in BI tag sequences
+
+def ranges(bi_seq, B_tag_idx):
+    ret = []
+    start = 0
+
+    for i in range(1, len(bi_seq)):
+        if bi_seq[i] == B_tag_idx:
+            end = i
+            ret.append((start, end))
+            start = i
+
+    ret.append((start, len(bi_seq)))
+
+    return ret
+
+
+def inter_intra_dep(parents_word, bi_chunk, B_tag_idx):
+    w2ch = align_word_chunk(bi_chunk, B_tag_idx)
+    word_ranges = ranges(bi_chunk, B_tag_idx)
+    chunk_heads = []
+    intra_dep = []
+    parents_word = [0] + parents_word
+
+    for r in word_ranges[1:]:
+        start, end = r[0], r[1]
+        # start, end = r[0], r[1]
+
+        head_found = False
+        intra_dep.append([])
+        for w in range(start, end):
+
+            parent_id = parents_word[w]
+            diff = parent_id - start + 1
+            if (parent_id < start or end <= parent_id):
+                if not head_found:
+                    chunk_heads.append(w)
+                    head_found = True
+                intra_dep[-1].append(0)
+            else:
+                intra_dep[-1].append(diff)
+
+    inter_dep = [w2ch[parents_word[ch_head]] for ch_head in chunk_heads]
+
+    return inter_dep, intra_dep, [0] + chunk_heads
+
+
+def word_dep(inter_dep, intra_dep, bi_chunk, chunk_heads, B_tag_idx):
+    ret = []
+    # inter_dep = [0] + inter_dep
+    word_ranges = ranges(bi_chunk, B_tag_idx)
+
+    for idx, chunk in enumerate(intra_dep):
+        start = word_ranges[idx + 1][0]
+        for w in chunk:
+            if w == 0:
+                ret.append(chunk_heads[inter_dep[idx]])
+            else:
+                ret.append(start + w - 1)
+
+    return ret
+
+
+def align_word_chunk(bi_chunk, B_tag_idx):
+    word2chunk = []
+
+    chunk_idx = 0
+    for bi in bi_chunk:
+        word2chunk.append(chunk_idx)
+        if bi == B_tag_idx:
+            chunk_idx += 1
+
+    return word2chunk
+
+
 
 def bilstm(l2rlstm, r2llstm, inputs, pdrop):
     l2rlstm.set_dropouts(pdrop)
@@ -128,4 +203,39 @@ def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
             bb.set_dropout_masks(batch_size)
         fs, bs = f.transduce(inputs), b.transduce(reversed(inputs))
         inputs = [dy.concatenate([f,b]) for f, b in zip(fs, reversed(bs))]
-    return inputs
+    return inputs, fs, bs
+
+
+def segment_embds(l2r_outs, r2l_outs, ranges, offset=0, segment_concat=False):
+    ret = []
+    if offset == 0:
+        st = 0
+        en = len(ranges)
+    elif offset == -1:
+        st = 0
+        en = len(ranges)
+        offset = 0
+    else:
+        st = offset
+        en = -offset
+
+    # for r in ranges[st:en]:
+    for r in ranges:
+        # start = r[0] - offset
+        # end = r[1] - offset
+        start = r[0] + offset
+        end = r[1] + offset
+
+        if segment_concat:
+            l2r = l2r_outs[end - 1] + l2r_outs[start]
+            r2l = r2l_outs[start] + r2l_outs[end - 1]
+            # l2r = l2r_outs[end - 1]
+            # r2l = r2l_outs[start]
+        else:
+            l2r = l2r_outs[end - 1] - l2r_outs[start - 1]
+            r2l = r2l_outs[start] - r2l_outs[end]
+
+        ret.append(dy.concatenate([l2r, r2l]))
+
+    return ret
+
