@@ -204,7 +204,9 @@ def uniLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.,
     return inputs
 
 
-def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
+def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0., bidir_input=True, inputs_f=None, inputs_b=None):
+    fs, bs = inputs, inputs
+
     for fb, bb in builders:
         fb.set_dropouts(dropout_x, dropout_h)
         bb.set_dropouts(dropout_x, dropout_h)
@@ -212,8 +214,9 @@ def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
         if batch_size is not None:
             fb.set_dropout_masks(batch_size)
             bb.set_dropout_masks(batch_size)
-        fs, bs = f.transduce(inputs), b.transduce(reversed(inputs))
+        fs, bs = f.transduce(inputs if bidir_input else fs), b.transduce(reversed(inputs if bidir_input else bs))
         inputs = [dy.concatenate([f,b]) for f, b in zip(fs, reversed(bs))]
+        # inputs_f, inputs_b = [f for f in fs], [b for b in bs]
     return inputs, fs, bs
 
 

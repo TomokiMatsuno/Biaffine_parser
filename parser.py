@@ -80,7 +80,7 @@ class Parser(object):
         self._pdrop_embs = pdrop_embs
         self._pdrop_lstm = pdrop_lstm
 
-        self.LSTM_Builders_word = self.init_LSTMBuilders(config.layers_word, input_dim, hidden_dim)
+        self.LSTM_Builders_word = self.init_LSTMBuilders(config.layers_word, input_dim, hidden_dim, bidir_input=False)
         self.LSTM_Builders_chunk = self.init_LSTMBuilders(config.layers_chunk, hidden_dim, hidden_dim)
 
         # self.dropout_lstm_input = dropout_lstm_input
@@ -131,26 +131,40 @@ class Parser(object):
         self._masks_w = preprocess.seq2ids(masks_w, indices)
         self._masks_t = preprocess.seq2ids(masks_t, indices)
 
-    def init_LSTMBuilders(self, layers, input_dim, hidden_dim):
+    def init_LSTMBuilders(self, layers, input_dim, hidden_dim, bidir_input=True):
         LSTM_builders = []
 
         if not config.isTest:
+            # f = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * (1 + bidir_input), hidden_dim, self._pc)
+            # b = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * (1 + bidir_input), hidden_dim, self._pc)
             f = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
             b = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
         else:
+            # f = dy.VanillaLSTMBuilder(1, input_dim * (2 * bidir_input), hidden_dim, self._pc)
+            # b = dy.VanillaLSTMBuilder(1, input_dim * (2 * bidir_input), hidden_dim, self._pc)
             f = dy.VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
             b = dy.VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
 
         LSTM_builders.append((f, b))
         for i in range(layers - 1):
             if not config.isTest:
-                f = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-                b = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
+                f = utils.orthonormal_VanillaLSTMBuilder(1, hidden_dim * (1 + bidir_input), hidden_dim, self._pc)
+                b = utils.orthonormal_VanillaLSTMBuilder(1, hidden_dim * (1 + bidir_input), hidden_dim, self._pc)
             else:
-                f = dy.VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-                b = dy.VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
+                f = dy.VanillaLSTMBuilder(1, hidden_dim * (1 + bidir_input), hidden_dim, self._pc)
+                b = dy.VanillaLSTMBuilder(1, hidden_dim * (1 + bidir_input), hidden_dim, self._pc)
 
             LSTM_builders.append((f, b))
+
+        return LSTM_builders
+
+    def uniLSTM_builders(self, layers, input_dim, lstm_dim):
+        LSTM_builders = []
+        f = utils.orthonormal_VanillaLSTMBuilder(1, input_dim, lstm_dim, self._pc, isTest=config.isTest)
+        LSTM_builders.append(f)
+        for i in range(layers - 1):
+            f = utils.orthonormal_VanillaLSTMBuilder(1, lstm_dim, lstm_dim, self._pc, isTest=config.isTest)
+            LSTM_builders.append(f)
 
         return LSTM_builders
 
@@ -230,7 +244,7 @@ class Parser(object):
         lstm_ins = [dy.concatenate([emb_w, emb_t]) for emb_w, emb_t in zip(embs_w, embs_t)]
         # lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
         # lstm_outs = dy.concatenate_cols(utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
-        bidirouts_word, l2routs_word, r2louts_word = utils.biLSTM(self.LSTM_Builders_word, lstm_ins, None, self._pdrop_lstm, self._pdrop_lstm)
+        bidirouts_word, l2routs_word, r2louts_word = utils.biLSTM(self.LSTM_Builders_word, lstm_ins, None, self._pdrop_lstm, self._pdrop_lstm, bidir_input=False)
         lstm_outs_word = dy.concatenate_cols(bidirouts_word[1:-1])
 
         if isTrain:
