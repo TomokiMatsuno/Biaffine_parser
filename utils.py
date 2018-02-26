@@ -193,6 +193,17 @@ def orthonormal_initializer(output_size, input_size):
 #     return inputs
 #
 
+def uniLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0., rev=False):
+    for b in builders:
+        b.set_dropouts(dropout_x, dropout_h)
+        s_0 = b.initial_state()
+        if batch_size is not None:
+            b.set_dropout_masks(batch_size)
+        s = s_0.transduce(inputs if not rev else reversed(inputs))
+        inputs = s if not rev else reversed(s)
+    return inputs
+
+
 def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
     for fb, bb in builders:
         fb.set_dropouts(dropout_x, dropout_h)
@@ -239,3 +250,98 @@ def segment_embds(l2r_outs, r2l_outs, ranges, offset=0, segment_concat=False):
 
     return ret
 
+
+
+def arc_argmax(parse_probs, length, tokens_to_keep, ensure_tree=True):
+    """
+    adopted from Timothy Dozat https://github.com/tdozat/Parser/blob/master/lib/models/nn.py
+    """
+    if ensure_tree:
+        I = np.eye(len(tokens_to_keep))
+
+
+        # block loops and pad heads
+        parse_probs = parse_probs * tokens_to_keep * (1 - I)
+        # arc_masks = left_arc_mask(length)
+        # parse_probs = parse_probs * arc_masks
+        parse_preds = np.argmax(parse_probs, axis=1)
+        tokens = np.arange(1, length) #original
+        # tokens = np.arange(length) #modified
+
+        roots = np.where(parse_preds[tokens] == 0)[0] + 1 #original
+        # roots = np.where(parse_preds[tokens] == 0)[0] #modified
+        # ensure at least one root
+        if len(roots) < 1:
+            # global root_0
+            # root_0 += 1
+
+            # The current root probabilities
+            root_probs = parse_probs[tokens, 0]
+            # The current head probabilities
+            old_head_probs = parse_probs[tokens, parse_preds[tokens]]
+            # Get new potential root probabilities
+            new_root_probs = root_probs / old_head_probs
+            # Select the most probable root
+            new_root = tokens[np.argmax(new_root_probs)]
+            # Make the change
+            parse_preds[new_root] = 0
+        # ensure at most one root
+        elif len(roots) > 1:
+            # global root_more_than_1
+            # root_more_than_1 += 1
+
+            # The probabilities of the current heads
+            root_probs = parse_probs[roots, 0]
+            # Set the probability of depending on the root zero
+            parse_probs[roots, 0] = 0
+            # Get new potential heads and their probabilities
+            new_heads = np.argmax(parse_probs[roots][:, tokens], axis=1) + 1 # original line
+            # new_heads = np.argmax(parse_probs[roots][:, tokens], axis=1) # modified line
+            new_head_probs = parse_probs[roots, new_heads] / root_probs
+            # Select the most probable root
+            new_root = roots[np.argmin(new_head_probs)]
+            # Make the change
+            parse_preds[roots] = new_heads
+            parse_preds[new_root] = 0
+        # remove cycles
+        tarjan = Tarjan(parse_preds, tokens)
+        cycles = tarjan.SCCs
+        for SCC in tarjan.SCCs:
+            # global circle_count
+            # circle_count += 1
+
+            if len(SCC) > 1:
+                dependents = set()
+                to_visit = set(SCC)
+                while len(to_visit) > 0:
+                    node = to_visit.pop()
+                    if not node in dependents:
+                        dependents.add(node)
+                        to_visit.update(tarjan.edges[node])
+                # The indices of the nodes that participate in the cycle
+                cycle = np.array(list(SCC))
+                # The probabilities of the current heads
+                old_heads = parse_preds[cycle]
+                old_head_probs = parse_probs[cycle, old_heads]
+                # Set the probability of depending on a non-head to zero
+                non_heads = np.array(list(dependents))
+                parse_probs[np.repeat(cycle, len(non_heads)), np.repeat([non_heads], len(cycle), axis=0).flatten()] = 0
+                # Get new potential heads and their probabilities
+                new_heads = np.argmax(parse_probs[cycle][:, tokens], axis=1) + 1 #original
+                # new_heads = np.argmax(parse_probs[cycle][:, tokens], axis=1) #modified
+                new_head_probs = parse_probs[cycle, new_heads] / old_head_probs
+                # Select the most probable change
+                change = np.argmax(new_head_probs)
+                changed_cycle = cycle[change]
+                old_head = old_heads[change]
+                new_head = new_heads[change]
+                # Make the change
+                parse_preds[changed_cycle] = new_head
+                tarjan.edges[new_head].add(changed_cycle)
+                tarjan.edges[old_head].remove(changed_cycle)
+        return parse_preds
+    else:
+        # block and pad heads
+        parse_probs = parse_probs * tokens_to_keep
+        parse_preds = np.argmax(parse_probs, axis=1)
+        return parse_preds

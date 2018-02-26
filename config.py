@@ -20,7 +20,7 @@ biaffine_bias_x_rel = True
 biaffine_bias_y_rel = True
 
 epoc = 1000
-batch_size = 1
+batch_size = 32
 
 use_annealing = True
 learning_rate = 0.002
@@ -41,7 +41,7 @@ load_file = str(load_file_num) + "/parameter"
 
 isTest = False
 
-las = not True
+las = True
 
 overfit = False
 

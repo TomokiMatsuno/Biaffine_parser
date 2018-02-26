@@ -108,6 +108,11 @@ class Parser(object):
         # self.mlp_rel_size = mlp_rel_size
         # self.dropout_mlp = dropout_mlp
 
+        self.R_dep_rel = self._pc.add_parameters((self._rel_dim, self._rel_dim * 2),
+                                             init=(dy.ConstInitializer(0.) if config.const_init else None))
+        self.R_head_rel = self._pc.add_parameters((self._rel_dim, self._rel_dim * 2),
+                                             init=(dy.ConstInitializer(0.) if config.const_init else None))
+
         self.W_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim + 1),
                                              init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.W_arc_intra = self._pc.add_parameters((self._arc_dim, self._arc_dim + 1),
@@ -138,8 +143,13 @@ class Parser(object):
 
         LSTM_builders.append((f, b))
         for i in range(layers - 1):
-            f = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-            b = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
+            if not config.isTest:
+                f = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
+                b = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
+            else:
+                f = dy.VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
+                b = dy.VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
+
             LSTM_builders.append((f, b))
 
         return LSTM_builders
@@ -242,8 +252,8 @@ class Parser(object):
 
         # embs_intra_dep = dy.concatenate_cols([self.emb_root_intra[0], embs_intra_dep])
         # embs_intra_head = dy.concatenate_cols([self.emb_root_intra[0], embs_intra_head])
-        dep_arc, dep_rel = embs_intra_dep[:self._arc_dim], embs_intra_dep[self._arc_dim:]
-        head_arc, head_rel = embs_intra_head[:self._arc_dim], embs_intra_head[self._arc_dim:]
+        dep_arc, dep_rel_word = embs_intra_dep[:self._arc_dim], embs_intra_dep[self._arc_dim:]
+        head_arc, head_rel_word = embs_intra_head[:self._arc_dim], embs_intra_head[self._arc_dim:]
 
         for r, head_intra in zip(word_ranges[1:], heads_intra):
             col_range = [i for i in range(r[0], r[1])]
@@ -277,8 +287,8 @@ class Parser(object):
         if isTrain:
             embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
 
-        dep_arc, dep_rel = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
-        head_arc, head_rel = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
+        dep_arc, dep_rel_chunk = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
+        head_arc, head_rel_chunk = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
 
         len_inter = len(bidirouts_chunk)
 
@@ -302,24 +312,39 @@ class Parser(object):
             if len(res_arc) != len(heads):
                 print('error!')
                 return loss_arc, num_cor_arc, num_cor_rel
-
-            num_cor_arc = np.sum(np.equal(res_arc, heads))
+            cor_arc_mask = np.equal(res_arc, heads)
+            num_cor_arc = np.sum(cor_arc_mask)
             # num_cor_arc = np.sum(np.equal(np.equal(res_arc, heads), punct_mask))
 
         if not config.las:
             return loss_arc + loss_bi, num_cor_arc, num_cor_rel
 
-        logits_rel = utils.bilinear(dep_rel, W_rel, head_rel,
+        embs_dep_chunk = []
+        embs_head_chunk = []
+        idx_chunk = -1
+        for bi in bi_chunk if isTrain else preds_chunk:
+            if bi == 0:
+                idx_chunk += 1
+            embs_dep_chunk.append(dy.select_cols(dep_rel_chunk, [idx_chunk]))
+            embs_head_chunk.append(dy.select_cols(head_rel_chunk, [idx_chunk]))
+
+        R_dep_rel = dy.parameter(self.R_dep_rel)
+        R_head_rel = dy.parameter(self.R_head_rel)
+
+        dep_rel_word = R_dep_rel * dy.concatenate([dep_rel_word, dy.concatenate_cols(embs_dep_chunk)])
+        head_rel_word = R_head_rel * dy.concatenate([head_rel_word, dy.concatenate_cols(embs_head_chunk)])
+
+        logits_rel = utils.bilinear(dep_rel_word, W_rel, head_rel_word,
                                     self._rel_dim, seq_len, 1, self._vocab_size_r,
                                     self.biaffine_bias_x_rel, self.biaffine_bias_y_rel)
 
         flat_logits_rel = dy.reshape(logits_rel, (seq_len, self._vocab_size_r), seq_len)
 
-        partial_rel_logits = dy.pick_batch(flat_logits_rel, [0] + heads if isTrain else [0] + preds_arc)
+        partial_rel_logits = dy.pick_batch(flat_logits_rel, [0] + heads if isTrain else [0] + res_arc)
 
         if isTrain:
             loss_rel = dy.sum_batches(dy.pickneglogsoftmax_batch(partial_rel_logits, [0] + rels))
         else:
             preds_rel = partial_rel_logits.npvalue().argmax(0)
-            num_cor_rel = np.sum(np.equal(np.equal(preds_rel[1:], rels), punct_mask))
-        return loss_arc + loss_rel, num_cor_arc, num_cor_rel
+            num_cor_rel = np.sum(np.multiply(np.equal(preds_rel[1:], rels), cor_arc_mask))
+        return loss_arc + loss_bi + loss_rel, num_cor_arc, num_cor_rel
