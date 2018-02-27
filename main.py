@@ -144,10 +144,12 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
 
             score_inter = (tot_cor_arc_inter / (tot_tokens - tot_arc_intra))
             score_intra = (tot_cor_arc_intra / tot_arc_intra)
-            preprocess.print2filecons(str(score))
-            preprocess.print2filecons(str(score_label))
-            print(score_inter)
-            print(score_intra)
+            # preprocess.print2filecons(str(score))
+            # preprocess.print2filecons(str(score_label))
+            print('UAS:\t', score, end='\t')
+            print('LAS:\t', score_label, end='\t')
+            print('inter:\t', score_inter, end='\t')
+            print('intra:\t', score_intra)
             if score > parser._best_score:
                 parser._update = True
                 parser._early_stop_count = 0
@@ -160,9 +162,9 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
             preprocess.print2filecons(str(parser._best_score_las))
 
             for ri in range(len(rd.i2x)):
-                print(rd.i2x[ri])
-                print('recall', cnt_cor_rel[ri] / (cnt_gold_rel[ri] if cnt_gold_rel[ri] != 0 else 1.))
-                print('precision', cnt_cor_rel[ri] / (cnt_preds_rel[ri] if cnt_preds_rel[ri] != 0 else 1.))
+                print(rd.i2x[ri], end='\t')
+                print('recall', cnt_cor_rel[ri] / (cnt_gold_rel[ri] if cnt_gold_rel[ri] != 0 else 1.), end='\t')
+                print('precision', cnt_cor_rel[ri] / (cnt_preds_rel[ri] if cnt_preds_rel[ri] != 0 else 1.), end='\t')
                 print('f1', (2 * cnt_cor_rel[ri] / (cnt_gold_rel[ri] + cnt_preds_rel[ri])) if (cnt_gold_rel[ri] + cnt_preds_rel[ri]) else 0.)
 
 
