@@ -7,6 +7,7 @@ import glob
 import sys
 
 from collections import Counter
+from gensim.models.keyedvectors import KeyedVectors
 
 import config
 import paths
@@ -105,11 +106,16 @@ def files2sents(path, indices):
     return ret
 
 
-def sents2dicts(sents_train, sents_val):
+def sents2dicts(sents_train, sents_val, prets=None, initial_entries=None):
     dicts = []
     for sidx in range(len(sents_train)):
-        dicts.append(Dictionary(sents_train[sidx]))
-        dicts[-1].add_entries(sents_val[sidx])
+        if prets is None or prets[1] != sidx:
+            dicts.append(Dict(sents_train[sidx], initial_entries))
+            dicts[-1].add_entries(sents_val[sidx])
+        else:
+            dicts.append(Dictionary(sents_train[sidx], pret_file=prets[0]))
+            dicts[-1].add_entries(sents_val[sidx])
+
     return dicts
 
 
@@ -163,7 +169,7 @@ class Dictionary(object):
     def __init__(self, seq, pret_file=None):
         self.freezed = False
         self.cnt = Counter(seq)
-        self.words_in_train = set()
+        self.words_in_train = set(seq)
         self.i2x = ['UNK']
         self.add_entries()
 
@@ -178,17 +184,14 @@ class Dictionary(object):
 
     def add_entries(self, seq=None):
         if not self.freezed:
-            for elem in self.cnt:
+            for elem in self.words_in_train:
                 if self.cnt[elem] >= config.minimal_count:
                     self.i2x.append(elem)
-            self.words_in_train = set(self.i2x)
+            # self.words_in_train = set(self.i2x)
         else:
-            unk_count = 0
             for ent in seq:
                 if ent not in self.x2i:
                     self.x2i[ent] = self.x2i['UNK']
-                    unk_count += 1
-            ahaha = 0
 
     def add_entry(self, elem):
         if elem not in self.x2i:
@@ -225,21 +228,77 @@ class Dictionary(object):
     # print 'Total words:', len(self._id2word)
 
     def get_pret_embs(self):
-        assert (self._pret_file is not None), "No pretrained file provided."
-        embs = [[]] * len(self.i2x)  # make list of empty list of length of id2word
-        with open(self._pret_file) as f:
-            for line in f.readlines():
-                line = line.strip().split()
-                if line:
-                    word, data = line[0], line[1:]
-                    embs[self.x2i[word]] = data  #
-        emb_size = len(data)
-        for idx, emb in enumerate(embs):  # assign zero vector if a word is not provided with pretrained embedding
-            if not emb:
-                embs[idx] = np.zeros(emb_size)
-        pret_embs = np.array(embs, dtype=np.float32)
-        return pret_embs / np.std(
-            pret_embs)  # return an array of pretrained embeddings normalized by standard deviation
+        # assert (self._pret_file is not None), "No pretrained file provided."
+        # embs = [[]] * len(self.i2x)  # make list of empty list of length of id2word
+        # with open(self._pret_file) as f:
+        #     for line in f.readlines():
+        #         line = line.strip().split()
+        #         if line:
+        #             word, data = line[0], [float(l) for l in line[1:]]
+        #             embs[self.x2i[word]] = data  #
+        # emb_size = len(data)
+        # for idx, emb in enumerate(embs):  # assign zero vector if a word is not provided with pretrained embedding
+        #     if not emb:
+        #         embs[idx] = np.zeros(emb_size)
+        # # pret_embs = np.array(embs, dtype=np.float32)
+        # pret_embs = np.array(embs)
+        # return pret_embs / np.std(
+        #     pret_embs)  # return an array of pretrained embeddings normalized by standard deviation
+        word_vectors = KeyedVectors.load_word2vec_format(paths.pret_file, binary=False)
+
+        return word_vectors
+
+
+
+class Dict:
+    def __init__(self, seq, initial_entries=None):
+        self.i2x = {}
+        self.x2i = {}
+        self.appeared_x2i = {}
+        self.appeared_i2x = {}
+        self.freezed = False
+        self.initial_entries = initial_entries
+
+        if initial_entries is not None:
+            for ent in initial_entries:
+                self.add_entry(ent)
+
+        for ent in seq:
+            self.add_entry(ent)
+        self.freezed = True
+
+    def add_entry(self, ent):
+        if ent not in self.x2i:
+            if not self.freezed:
+                self.i2x[len(self.i2x)] = ent
+                self.x2i[ent] = len(self.x2i)
+            else:
+                self.x2i[ent] = self.x2i["UNK"]
+
+    def add_entries(self, seq=None):
+        if not self.freezed:
+            for elem in self.words_in_train:
+                if self.cnt[elem] >= config.minimal_count:
+                    self.i2x.append(elem)
+            # self.words_in_train = set(self.i2x)
+        else:
+            for ent in seq:
+                if ent not in self.x2i:
+                    self.x2i[ent] = self.x2i['UNK']
+
+    def freeze(self):
+        self.freezed = True
+
+    def sent2ids(self, seq, indices):
+        ret = []
+        for elem, idx in zip(seq, indices):
+            if idx == 1:
+                ret.append([])
+            ret[-1].append(self.x2i[elem] if elem in self.x2i else self.x2i['UNK'])
+
+        return ret
+
+
 
 
 def make_dir(dir):

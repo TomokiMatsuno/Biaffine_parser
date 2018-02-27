@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import dynet as dy
+from collections import Counter
 
 # public library
 import glob
@@ -18,13 +19,15 @@ timer = timer.Timer()
 
 file_train = paths.train_file
 file_val = paths.test_file if config.isTest else paths.dev_file
+# file_val = paths.dev_file if config.isTest else paths.dev_file
 
 col_indices = [0, 1, 3, 6, 7, 10] if config.japanese else [0, 1, 3, 6, 7]
 
 sents_train, sents_val = pre.files2sents(file_train, col_indices), pre.files2sents(file_val, col_indices)
 if config.num_sents > 0:
     sents_train, sents_val = pre.files2sents(file_train, col_indices), pre.files2sents(file_train, col_indices)
-dicts = pre.sents2dicts(sents_train, sents_val)
+# dicts = pre.sents2dicts(sents_train, sents_val, prets=(paths.pret_file, 1))
+dicts = pre.sents2dicts(sents_train, sents_val, initial_entries=config.initial_entries)
 indices = [sents_train[0], sents_val[0]]
 ids_train, ids_val = pre.sents2ids(sents_train, dicts, indices[0], no_dict=[0, 3, 5]), pre.sents2ids(sents_val, dicts, indices[1], no_dict=[0, 3, 5])
 
@@ -35,6 +38,7 @@ word_ids[1], tag_ids[1], head_ids[1], rel_ids[1] = ids_val[1], ids_val[2], ids_v
 
 bi_ids[0], bi_ids[1] = [[0 if bi == 'B' else 1 for bi in bi_sent] for bi_sent in ids_train[5]], [[0 if bi == 'B' else 1 for bi in bi_sent] for bi_sent in ids_val[5]]
 
+# embs_word = wd.get_pret_embs()
 embs_word = None
 
 parser = parser.Parser(
@@ -64,8 +68,14 @@ parser._punct_id = rd.x2i['punct']
 def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
     losses_batch = []
     tot_tokens = 0
+    tot_arc_intra = 0
     tot_cor_arc = 0
+    tot_cor_arc_intra = 0
+    tot_cor_arc_inter = 0
     tot_cor_rel = 0
+    cnt_cor_rel = Counter()
+    cnt_gold_rel = Counter()
+    cnt_preds_rel = Counter()
 
     step = 0
     parser._pdrop = config.pdrop * isTrain
@@ -86,7 +96,8 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
         if not isTrain:
             dy.renew_cg()
 
-        loss, num_cor_arc, num_cor_rel = parser.run(seq_w, seq_t, seq_h, seq_r, seq_bi, masks_w, masks_t, isTrain)
+        loss, num_cor_arc, num_cor_arc_intra, num_arc_intra, num_cor_rel, cor_rels, gold_rels, preds_rels\
+            = parser.run(seq_w, seq_t, seq_h, seq_r, seq_bi, masks_w, masks_t, isTrain)
         losses_batch.append(dy.sum_batches(loss))
 
         # punct_count = 0
@@ -97,9 +108,19 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
         #
         # tot_tokens += len(seq_w) - punct_count
         tot_tokens += len(seq_w)
+        tot_arc_intra += num_arc_intra
         tot_cor_arc += num_cor_arc
+        tot_cor_arc_intra += num_cor_arc_intra
+        tot_cor_arc_inter += num_cor_arc - num_cor_arc_intra
         tot_cor_rel += num_cor_rel
 
+        if not isTrain:
+            for elem in cor_rels:
+                cnt_cor_rel[elem] += 1
+            for elem in gold_rels:
+                cnt_gold_rel[elem] += 1
+            for elem in preds_rels:
+                cnt_preds_rel[elem] += 1
         step += 1
 
         if (step % config.batch_size == 0 or step == len(word_ids) - 1) and isTrain:
@@ -120,8 +141,13 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
             score = (tot_cor_arc / tot_tokens)
             assert tot_cor_rel <= tot_tokens, "tot_cor_rel > tot_tokens"
             score_label = (tot_cor_rel / tot_tokens)
+
+            score_inter = (tot_cor_arc_inter / (tot_tokens - tot_arc_intra))
+            score_intra = (tot_cor_arc_intra / tot_arc_intra)
             preprocess.print2filecons(str(score))
             preprocess.print2filecons(str(score_label))
+            print(score_inter)
+            print(score_intra)
             if score > parser._best_score:
                 parser._update = True
                 parser._early_stop_count = 0
@@ -132,6 +158,14 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
 
             preprocess.print2filecons(str(parser._best_score))
             preprocess.print2filecons(str(parser._best_score_las))
+
+            for ri in range(len(rd.i2x)):
+                print(rd.i2x[ri])
+                print('recall', cnt_cor_rel[ri] / (cnt_gold_rel[ri] if cnt_gold_rel[ri] != 0 else 1.))
+                print('precision', cnt_cor_rel[ri] / (cnt_preds_rel[ri] if cnt_preds_rel[ri] != 0 else 1.))
+                print('f1', (2 * cnt_cor_rel[ri] / (cnt_gold_rel[ri] + cnt_preds_rel[ri])) if (cnt_gold_rel[ri] + cnt_preds_rel[ri]) else 0.)
+
+
 
     return
 

@@ -108,6 +108,10 @@ class Parser(object):
         # self.mlp_rel_size = mlp_rel_size
         # self.dropout_mlp = dropout_mlp
 
+        self.R_dep_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim * 2),
+                                             init=(dy.ConstInitializer(0.) if config.const_init else None))
+        self.R_head_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim * 2),
+                                             init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.R_dep_rel = self._pc.add_parameters((self._rel_dim, self._rel_dim * 2),
                                              init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.R_head_rel = self._pc.add_parameters((self._rel_dim, self._rel_dim * 2),
@@ -221,9 +225,16 @@ class Parser(object):
         loss_arc = dy.scalarInput(0)
         loss_rel = 0
 
+        tot_arc_intra = 0
         num_cor_arc = 0
         num_cor_arc_intra = 0
         num_cor_rel = 0
+        type_cor_rel = []
+        type_preds_rel = []
+        cor_rel = []
+        gold_rels = []
+        system_rels = []
+        preds_rel = []
 
         if isTrain:
             # embs_w = [self.lp_w[w if w < self._vocab_size_w else 0] * mask_w for w, mask_w in zip(words, masks_w)]
@@ -266,15 +277,15 @@ class Parser(object):
 
         # embs_intra_dep = dy.concatenate_cols([self.emb_root_intra[0], embs_intra_dep])
         # embs_intra_head = dy.concatenate_cols([self.emb_root_intra[0], embs_intra_head])
-        dep_arc, dep_rel_word = embs_intra_dep[:self._arc_dim], embs_intra_dep[self._arc_dim:]
-        head_arc, head_rel_word = embs_intra_head[:self._arc_dim], embs_intra_head[self._arc_dim:]
+        dep_arc_word, dep_rel_word = embs_intra_dep[:self._arc_dim], embs_intra_dep[self._arc_dim:]
+        head_arc_word, head_rel_word = embs_intra_head[:self._arc_dim], embs_intra_head[self._arc_dim:]
 
         for r, head_intra in zip(word_ranges[1:], heads_intra):
             col_range = [i for i in range(r[0], r[1])]
             len_chunk = r[1] - r[0] + 1
 
-            dep_arc_intra = dy.select_cols(dep_arc, col_range)
-            head_arc_intra = dy.select_cols(head_arc, col_range)
+            dep_arc_intra = dy.select_cols(dep_arc_word, col_range)
+            head_arc_intra = dy.select_cols(head_arc_word, col_range)
             dep_arc_intra = dy.concatenate_cols([self.emb_root_intra[0], dep_arc_intra])
             head_arc_intra = dy.concatenate_cols([self.emb_root_intra[1], head_arc_intra])
 
@@ -288,7 +299,9 @@ class Parser(object):
             else:
                 preds_arc = logits_arc.npvalue().argmax(0)
                 preds_arc_intra.append(preds_arc[1:])
-                # num_cor_arc_intra += np.sum(np.equal(preds_arc[1:], head_intra))
+                head_mask = np.not_equal(head_intra, np.zeros(len(head_intra)))
+                num_cor_arc_intra += np.sum(np.multiply(np.equal(preds_arc[1:], head_intra), head_mask))
+                tot_arc_intra += np.sum(head_mask)
 
         lstm_ins_chunk = utils.segment_embds(l2routs_word, r2louts_word, ranges=word_ranges, offset=1)
         bidirouts_chunk, _, _ = utils.biLSTM(self.LSTM_Builders_chunk, lstm_ins_chunk, None, self._pdrop_lstm, self._pdrop_lstm)
@@ -301,12 +314,36 @@ class Parser(object):
         if isTrain:
             embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
 
-        dep_arc, dep_rel_chunk = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
-        head_arc, head_rel_chunk = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
+        dep_arc_chunk, dep_rel_chunk = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
+        head_arc_chunk, head_rel_chunk = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
+
+        embs_dep_chunk = []
+        embs_head_chunk = []
+        tmp_dep_chunk = []
+        tmp_head_chunk = []
+
+        for idx_bi, bi in enumerate(bi_chunk if isTrain else preds_chunk):
+            if bi == 0 and idx_bi > 0:
+                embs_dep_chunk.append(dy.esum(tmp_dep_chunk))
+                embs_head_chunk.append(dy.esum(tmp_head_chunk))
+                tmp_dep_chunk = []
+                tmp_head_chunk = []
+            tmp_dep_chunk.append(dy.select_cols(dep_arc_word, [idx_bi]))
+            tmp_head_chunk.append(dy.select_cols(head_arc_word, [idx_bi]))
+
+        embs_dep_chunk.append(dy.esum(tmp_dep_chunk))
+        embs_head_chunk.append(dy.esum(tmp_head_chunk))
+
+        R_dep_arc = dy.parameter(self.R_dep_arc)
+        R_head_arc = dy.parameter(self.R_head_arc)
+
+        dep_arc_inter = R_dep_arc * dy.concatenate([dep_arc_chunk, dy.concatenate_cols(embs_dep_chunk)])
+        head_arc_inter = R_head_arc * dy.concatenate([head_arc_chunk, dy.concatenate_cols(embs_head_chunk)])
+
 
         len_inter = len(bidirouts_chunk)
 
-        logits_arc = utils.bilinear(dep_arc, W_arc, head_arc,
+        logits_arc = utils.bilinear(dep_arc_inter, W_arc, head_arc_inter,
                                     self._arc_dim, len_inter, config.batch_size, 1,
                                     self.biaffine_bias_x_arc, self.biaffine_bias_y_arc)
         flat_logits_arc = dy.reshape(logits_arc, (len_inter, ), len_inter)
@@ -331,7 +368,7 @@ class Parser(object):
             # num_cor_arc = np.sum(np.equal(np.equal(res_arc, heads), punct_mask))
 
         if not config.las:
-            return loss_arc + loss_bi, num_cor_arc, num_cor_rel
+            return loss_arc + loss_bi, num_cor_arc, num_cor_arc_intra, tot_arc_intra, num_cor_rel, type_cor_rel
 
         embs_dep_chunk = []
         embs_head_chunk = []
@@ -361,4 +398,11 @@ class Parser(object):
         else:
             preds_rel = partial_rel_logits.npvalue().argmax(0)
             num_cor_rel = np.sum(np.multiply(np.equal(preds_rel[1:], rels), cor_arc_mask))
-        return loss_arc + loss_bi + loss_rel, num_cor_arc, num_cor_rel
+            cor_rel = np.multiply(rels, np.multiply(np.equal(preds_rel[1:], rels), cor_arc_mask))
+            #gold_rels = np.multiply(rels, cor_arc_mask)
+            gold_rels = rels
+            # type_cor_rel = np.multiply(rels, np.equal(preds_rel[1:], rels))
+            #system_rels = np.multiply(preds_rel[1:], cor_arc_mask)
+            system_rels = preds_rel[1:]
+
+        return loss_arc + loss_bi + loss_rel, num_cor_arc, num_cor_arc_intra, tot_arc_intra, num_cor_rel, cor_rel, gold_rels, system_rels
