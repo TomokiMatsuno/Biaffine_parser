@@ -43,7 +43,7 @@ load_file = str(load_file_num) + "/parameter"
 
 isTest = not True
 
-las = not True
+las = True
 
 overfit = not True
 

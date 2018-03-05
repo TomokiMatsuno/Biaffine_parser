@@ -66,7 +66,8 @@ class Parser(object):
             self.lp_w = self._pc.lookup_parameters_from_numpy(embs_word)
         self.lp_t = self._pc.add_lookup_parameters((tag_size, input_dim), init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.emb_root = self._pc.add_lookup_parameters((2, input_dim), init=(dy.ConstInitializer(0.) if config.const_init else None))
-        self.emb_root_intra = self._pc.add_lookup_parameters((2, arc_dim * 2), init=(dy.ConstInitializer(0.) if config.const_init else None))
+        self.emb_root_intra = self._pc.add_lookup_parameters((2, hidden_dim * 2), init=(dy.ConstInitializer(0.) if config.const_init else None))
+        self.emb_root_intra_chunk = self._pc.add_lookup_parameters((2, hidden_dim * 2), init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.emb_BOS = self._pc.add_lookup_parameters((2, input_dim), init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.emb_EOS = self._pc.add_lookup_parameters((2, input_dim), init=(dy.ConstInitializer(0.) if config.const_init else None))
 
@@ -116,10 +117,12 @@ class Parser(object):
         # self.mlp_rel_size = mlp_rel_size
         # self.dropout_mlp = dropout_mlp
 
-        self.R_dep_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim * 2),
+        self.R_arc = self._pc.add_parameters((hidden_dim * 2, hidden_dim * 4),
                                              init=(dy.ConstInitializer(0.) if config.const_init else None))
-        self.R_head_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim * 2),
+        self.R_arc_chunk = self._pc.add_parameters((hidden_dim * 2, hidden_dim * 4),
                                              init=(dy.ConstInitializer(0.) if config.const_init else None))
+        # self.R_head_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim * 2),
+        #                                      init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.R_dep_rel = self._pc.add_parameters((self._rel_dim, self._rel_dim * 2),
                                              init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.R_head_rel = self._pc.add_parameters((self._rel_dim, self._rel_dim * 2),
@@ -299,28 +302,6 @@ class Parser(object):
         dep_arc_chunk, dep_rel_chunk = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
         head_arc_chunk, head_rel_chunk = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
 
-        # embs_dep_chunk = []
-        # embs_head_chunk = []
-        # tmp_dep_chunk = []
-        # tmp_head_chunk = []
-        #
-        # for idx_bi, bi in enumerate(bi_chunk if isTrain else preds_chunk):
-        #     if bi == 0 and idx_bi > 0:
-        #         embs_dep_chunk.append(dy.esum(tmp_dep_chunk))
-        #         embs_head_chunk.append(dy.esum(tmp_head_chunk))
-        #         tmp_dep_chunk = []
-        #         tmp_head_chunk = []
-        #     tmp_dep_chunk.append(dy.select_cols(dep_arc_word, [idx_bi]))
-        #     tmp_head_chunk.append(dy.select_cols(head_arc_word, [idx_bi]))
-        #
-        # embs_dep_chunk.append(dy.esum(tmp_dep_chunk))
-        # embs_head_chunk.append(dy.esum(tmp_head_chunk))
-        #
-        # R_dep_arc = dy.parameter(self.R_dep_arc)
-        # R_head_arc = dy.parameter(self.R_head_arc)
-        #
-        # dep_arc_inter = R_dep_arc * dy.concatenate([dep_arc_chunk, dy.concatenate_cols(embs_dep_chunk)])
-        # head_arc_inter = R_head_arc * dy.concatenate([head_arc_chunk, dy.concatenate_cols(embs_head_chunk)])
 
         dep_arc_inter = dep_arc_chunk
         head_arc_inter = head_arc_chunk
@@ -359,6 +340,20 @@ class Parser(object):
             # num_cor_arc = np.sum(cor_arc_mask)
             # num_cor_arc = np.sum(np.multiply(np.equal(res_arc, heads), punct_mask))
 
+        embs_chunk = []
+        tmp_chunk = []
+        idx_chunk = 0
+        R_arc = dy.parameter(self.R_arc)
+
+        for idx, bi in enumerate(bi_chunk):
+            tmp_chunk.append(bidirouts_chunk[idx_chunk])
+
+            if bi == 0 and idx_chunk < len(bidirouts_chunk) - 1:
+                idx_chunk += 1
+
+        embs_chunk = dy.concatenate_cols(tmp_chunk)
+
+        # lstm_outs_word = R_arc * dy.concatenate([lstm_outs_word, embs_chunk])
 
         embs_intra_dep, embs_intra_head = \
             utils.leaky_relu(dy.affine_transform([mlp_intra_dep_bias, mlp_intra_dep, lstm_outs_word])), \
@@ -381,6 +376,8 @@ class Parser(object):
         gold_arc_parent = []
         if not isTrain:
             heads_inter = preds_arc_chunk
+
+        R_arc_chunk = dy.parameter(self.R_arc_chunk)
 
 
         for idx, head_intra in enumerate(heads_intra):
@@ -411,6 +408,8 @@ class Parser(object):
             embs_intra_arc = [dy.select_cols(embs_intra_arc, [idx]) for idx in [0] + col_range_child + col_range_parent]
             embs_intra_arc, _, _ = utils.biLSTM(self.LSTM_Builders_word_2, embs_intra_arc, 1, self._pdrop_lstm, self._pdrop_lstm)
             embs_intra_arc = dy.concatenate_cols(embs_intra_arc)
+            chunk_embs = dy.concatenate_cols([self.emb_root_intra_chunk[0]] + [bidirouts_chunk[idx + 1]] * len(col_range_child) + [bidirouts_chunk[heads_inter[idx]]] * len(col_range_parent))
+            embs_intra_arc = R_arc_chunk * dy.concatenate([embs_intra_arc, chunk_embs])
 
             dep_arc_intra, head_arc_intra = \
                 utils.leaky_relu(dy.affine_transform([mlp_intra_dep_arc_bias, mlp_intra_dep_arc, embs_intra_arc])), \
@@ -435,7 +434,7 @@ class Parser(object):
             if isTrain:
                 loss_arc += dy.sum_batches(dy.pickneglogsoftmax_batch(flat_logits_arc, [0] + head_intra))
                 # loss_arc += dy.sum_batches(dy.pickneglogsoftmax_batch(flat_logits_arc, head_intra))
-                preds_arc = logits_arc.npvalue().argmax(0)
+                # preds_arc = logits_arc.npvalue().argmax(0)
                 preds_arc_child.append(head_intra[len(col_range_child):])
                 # preds_arc_parent.append([arc - len(col_range_child) + 1 for arc in head_intra[:len(col_range_child)]])
                 preds_arc_parent.append([arc for arc in head_intra[:len(col_range_child)]])
@@ -464,20 +463,20 @@ class Parser(object):
             return loss_arc + loss_bi + loss_rel, num_cor_arc, num_cor_arc_intra, tot_arc_intra, num_cor_rel, \
                    cor_rel, gold_rels, system_rels, cor_bi, cor_inter, len_inter - 1, num_suc
 
-        # embs_dep_chunk = []
-        # embs_head_chunk = []
-        # idx_chunk = -1
-        # for bi in bi_chunk if isTrain else preds_chunk:
-        #     if bi == 0:
-        #         idx_chunk += 1
-        #     embs_dep_chunk.append(dy.select_cols(dep_rel_chunk, [idx_chunk]))
-        #     embs_head_chunk.append(dy.select_cols(head_rel_chunk, [idx_chunk]))
-        #
-        # R_dep_rel = dy.parameter(self.R_dep_rel)
-        # R_head_rel = dy.parameter(self.R_head_rel)
-        #
-        # dep_rel_word = R_dep_rel * dy.concatenate([dep_rel_word, dy.concatenate_cols(embs_dep_chunk)])
-        # head_rel_word = R_head_rel * dy.concatenate([head_rel_word, dy.concatenate_cols(embs_head_chunk)])
+        embs_dep_chunk = []
+        embs_head_chunk = []
+        idx_chunk = -1
+        for bi in bi_chunk if isTrain else preds_chunk:
+            if bi == 0:
+                idx_chunk += 1
+            embs_dep_chunk.append(dy.select_cols(dep_rel_chunk, [idx_chunk]))
+            embs_head_chunk.append(dy.select_cols(head_rel_chunk, [idx_chunk]))
+
+        R_dep_rel = dy.parameter(self.R_dep_rel)
+        R_head_rel = dy.parameter(self.R_head_rel)
+
+        dep_rel_word = R_dep_rel * dy.concatenate([dep_rel_word, dy.concatenate_cols(embs_dep_chunk)])
+        head_rel_word = R_head_rel * dy.concatenate([head_rel_word, dy.concatenate_cols(embs_head_chunk)])
 
         logits_rel = utils.bilinear(dep_rel_word, W_rel, head_rel_word,
                                     self._rel_dim, seq_len, 1, self._vocab_size_r,
