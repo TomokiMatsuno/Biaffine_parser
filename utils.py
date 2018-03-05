@@ -1,9 +1,10 @@
 import dynet as dy
 import numpy as np
+from tarjan import Tarjan
 
 # id of B tag in BI tag sequences
 
-def ranges(bi_seq, B_tag_idx):
+def ranges(bi_seq, B_tag_idx=0):
     ret = []
     start = 0
 
@@ -17,35 +18,117 @@ def ranges(bi_seq, B_tag_idx):
 
     return ret
 
+def validate_sent(seq_h, seq_bi, seq_r, B_tag_id, punct_id):
+    # chunk_ranges = ranges([0] + seq_bi)
 
-def inter_intra_dep(parents_word, bi_chunk, B_tag_idx):
+    w2ch = align_word_chunk(seq_bi, with_root=False)
+
+    # heads_inter, heads_intra, chunk_heads = inter_intra_dep(seq_h, [0] + seq_bi, B_tag_id, seq_r,
+    #                                                               punct_id)
+    # # back = word_dep(heads_inter, heads_intra, chunk_heads=chunk_heads, bi_chunk=[0] + seq_bi,
+    # #                       B_tag_idx=B_tag_id)
+
+    chunk_ranges = ranges([0] + seq_bi, B_tag_id)
+    seq_h = [0] + seq_h
+    seq_r = [0] + seq_r
+
+    for r in chunk_ranges[1:]:
+        start = r[0]
+        end = r[1]
+        set_head_par = set()
+        list_rel = []
+        for i in range(start, end):
+            if seq_h[i] < start or end <= seq_h[i]:
+                if w2ch[seq_h[i]] not in set_head_par:
+                    set_head_par.add(w2ch[seq_h[i]])
+                    list_rel.append(seq_r[i])
+        # if len(set_head_par) > 1 and punct_id not in list_rel:
+        if len(set_head_par) > 1:
+            return False
+
+    return True
+
+
+def omit_invalid_sents(word_ids, tag_ids, head_ids, rel_ids, bi_ids, B_tag_id, punct_id):
+    valid_ids = [validate_sent(head_ids[i], bi_ids[i], rel_ids[i], B_tag_id, punct_id) for i in range(len(bi_ids))]
+    word_ids = [word_ids[idx] for idx in range(len(word_ids)) if valid_ids[idx]]
+    tag_ids = [tag_ids[idx] for idx in range(len(tag_ids)) if valid_ids[idx]]
+    head_ids = [head_ids[idx] for idx in range(len(head_ids)) if valid_ids[idx]]
+    rel_ids = [rel_ids[idx] for idx in range(len(rel_ids)) if valid_ids[idx]]
+    bi_ids = [bi_ids[idx] for idx in range(len(bi_ids)) if valid_ids[idx]]
+
+
+    return word_ids, tag_ids, head_ids, rel_ids, bi_ids
+
+
+
+
+
+
+def inter_intra_dep(parents_word, bi_chunk, B_tag_idx, rels, punct_idx):
     w2ch = align_word_chunk(bi_chunk, B_tag_idx)
-    word_ranges = ranges(bi_chunk, B_tag_idx)
+    chunk_ranges = ranges(bi_chunk, B_tag_idx)
     chunk_heads = []
     intra_dep = []
     parents_word = [0] + parents_word
+    rels = [0] + rels
+    par_outside = []
 
-    for r in word_ranges[1:]:
+    for r in chunk_ranges[1:]:
         start, end = r[0], r[1]
         # start, end = r[0], r[1]
 
         head_found = False
         intra_dep.append([])
+        par_outside.append([])
         for w in range(start, end):
 
             parent_id = parents_word[w]
             diff = parent_id - start + 1
             if (parent_id < start or end <= parent_id):
-                if not head_found:
+                if rels[w] != punct_idx and not head_found:
                     chunk_heads.append(w)
                     head_found = True
                 intra_dep[-1].append(0)
+                par_outside[-1].append(parent_id)
             else:
                 intra_dep[-1].append(diff)
 
+        if not head_found:
+            chunk_heads.append(w)
+
+
     inter_dep = [w2ch[parents_word[ch_head]] for ch_head in chunk_heads]
 
-    return inter_dep, intra_dep, [0] + chunk_heads
+    ret = []
+
+    for idx, par_chunk in enumerate(inter_dep):
+        # if inter_dep[-1] != 0:
+        #     print('!')
+
+        # if par_chunk == 0:
+        #     continue
+        child = []
+        par_start, par_end = chunk_ranges[par_chunk]
+        for elem in intra_dep[idx]:
+            if elem == 0:
+                if elem > par_outside[idx][0] - par_start + len(intra_dep[idx]):
+                    child.append(0)
+                else:
+                    child.append(par_outside[idx].pop(0) - par_start + len(intra_dep[idx]))
+            else:
+                if elem > len(intra_dep[idx]) + len(intra_dep[inter_dep[idx] - 1]) + 3:
+                    print('error')
+                child.append(elem)
+        if par_chunk != 0:
+            tmp = child + [(elem + len(intra_dep[idx]) - 1) if elem != 0 else 0 for elem in intra_dep[inter_dep[idx] - 1]]
+        else:
+            tmp = child + [0]
+
+        ret.append(tmp)
+
+    # return inter_dep, intra_dep, [0] + chunk_heads
+    return inter_dep, ret, [0] + chunk_heads
 
 
 def word_dep(inter_dep, intra_dep, bi_chunk, chunk_heads, B_tag_idx):
@@ -63,9 +146,326 @@ def word_dep(inter_dep, intra_dep, bi_chunk, chunk_heads, B_tag_idx):
 
     return ret
 
+def complete_sents(inters, intras, heads_chunk, bi_chunk):
+    ret = []
+    chunk_ranges = ranges(bi_chunk)
 
-def align_word_chunk(bi_chunk, B_tag_idx):
+    for idx, head in enumerate(heads_chunk):
+        start_chd, end_chd = chunk_ranges[idx + 1]
+        start_par, end_par = chunk_ranges[head]
+        intra = intras[idx]
+        inter = inters[idx]
+
+        tmp = [[] for i in range(len(inter))]
+        # que = [i for i in intra if i > len(inter) - 1]
+
+        for idx in range(len(inter)):
+            if inter[idx] >= len(inter):
+                tmp[idx] = inter[idx] - (len(inter)) + start_par
+            else:
+                tmp[idx] = inter[idx] + start_chd - 1
+
+        ret.extend(tmp)
+
+    return ret
+
+
+
+
+
+
+
+
+
+
+def isAncestorOf(anc_idx, des_heads):
+    set_des = set()
+    set_des.add(anc_idx)
+    set_des_size_prev = 0
+    des_indices = [False] * len(des_heads)
+    if anc_idx >= len(des_indices) or anc_idx < 0:
+        print('error!')
+    des_indices[anc_idx] = True
+
+    while set_des_size_prev != len(set_des):
+        for d_idx, dh in enumerate(des_heads):
+            if dh in set_des:
+                set_des.add(d_idx)
+                des_indices[d_idx] = True
+
+        set_des_size_prev = len(set_des)
+    ret_idx = 0
+    for di in des_indices:
+        if not di:
+            break
+        ret_idx += 1
+
+    return ret_idx
+
+
+def ancestorArray(parents):
+    parents = [0] + parents
+    ret = [[] for p in parents]
+
+    tpls = []
+    que = list()
+
+    for pidx, p in enumerate(parents):
+        tpls.append((p, pidx))
+
+    tpls.sort()
+
+    que.append(tpls[1])
+    prev = []
+
+    while len(que) > 0:
+        tmp = que.pop(0)
+        ret[tmp[1]].extend([tmp[0]] + ret[tmp[0]])
+        que.extend([t for t in tpls if t[0] == tmp[1]])
+
+    # return ret[1:]
+    return ret
+
+
+def convertChunks(bi_chunk, parents, rels, tags, parser, rd, td):
+    B_tag_idx = parser._B_tag_id
+    # bi_chunk = [0] + bi_chunk
+    parents = [0] + parents
+    rels = [0] + rels
+    tags = [0] + tags
+
+    chunk_ranges = ranges(bi_chunk, B_tag_idx)
+    ret_bi = [0] + bi_chunk.copy()
+    dep_tuples = []
+    set_heads = set([0])
+    anc_array = ancestorArray(parents[1:])
+    w2ch = align_word_chunk(bi_chunk, B_tag_idx)
+
+    for ridx, r in enumerate(chunk_ranges[1:]):
+        start = r[0]
+        end = r[1]
+        heads_in_chunk = []
+        set_parents = set()
+
+        for w in range(start, end):
+            if (parents[w] < start or end <= parents[w]) and parents[w] not in set_parents:
+                # set_heads.add(w)
+                # dep_tuples[-1].append((w, heads[w]))
+                heads_in_chunk.append(w)
+                set_heads.add(w)
+                set_parents.add(parents[w])
+                dep_tuples.append((w, parents[w]))
+
+            # if rels[w] == parser._mwe_id:
+            #     ret_bi[w] = 1
+            # if rels[w] == parser._acl_id:
+            #     ret_bi[w] = 0
+            # # if rels[w - 1] == parser._conj_id and rels[w] == parser._case_id:
+            # #     ret_bi[w - 1] = 1
+            # if rels[w - 1] == rd.x2i['compound'] and rels[w] == rd.x2i['nmod'] and rels[w + 1] == rd.x2i['case']:
+            #     ret_bi[w] = 0
+            # if rels[w - 1] == rd.x2i['cc'] and rels[w] == rd.x2i['compound'] and rels[w + 1] == rd.x2i['conj']:
+            #     ret_bi[w] = 1
+            # if rels[w - 1] == rd.x2i['cc'] and rels[w] == rd.x2i['conj'] and rels[w + 1] == rd.x2i['case']:
+            #     ret_bi[w] = 1
+            # if rels[w] == rd.x2i['advcl']:
+            #     ret_bi[w] = 0
+            # if rels[w - 1] == rd.x2i['nummod'] and rels[w] == rd.x2i['punct'] and rels[w + 1] == rd.x2i['dep']:
+            #     ret_bi[w + 1] = 1
+            # if rels[w - 1] == rd.x2i['punct'] and rels[w] == rd.x2i['nummod'] and rels[w + 1] == rd.x2i['compound']:
+            #     ret_bi[w] = 1
+            # if rels[w - 1] == rd.x2i['aux'] and rels[w] == rd.x2i['neg'] and rels[w + 1] == rd.x2i['nmod']:
+            #     ret_bi[w + 1] = 0
+            # if rels[w - 1] == rd.x2i['case'] and rels[w] == rd.x2i['dep'] and rels[w + 1] == rd.x2i['dep']:
+            #     ret_bi[w] = 0
+            # if rels[w - 1] == rd.x2i['case'] and rels[w] == rd.x2i['acl'] and rels[w + 1] == rd.x2i['nmod']:
+            #     ret_bi[w + 1] = 0
+            # if rels[w - 1] == rd.x2i['acl'] and rels[w] == rd.x2i['root']:
+            #     ret_bi[w] = 0
+            # if rels[w - 1] == rd.x2i['nmod'] and rels[w] == rd.x2i['case'] and rels[w + 1] == rd.x2i['case']:
+            #     ret_bi[w - 1] = 0
+            # if rels[w - 1] == rd.x2i['conj'] and rels[w] == rd.x2i['punct'] and rels[w + 1] == rd.x2i['conj']:
+            #     ret_bi[w - 1] = 0
+            #     ret_bi[w + 1] = 0
+            # if rels[w] == rd.x2i['conj'] and rels[w + 1] == rd.x2i['case']:
+            #     ret_bi[w] = 0
+
+            # if tags[w - 1] == td.x2i['CONJ'] and tags[w] == td.x2i['NOUN']:
+            #     ret_bi[w] = 1
+
+        # dep_tuples.append([])
+
+        while len(heads_in_chunk) > 1:
+            # if heads[heads_in_chunk[0]] == heads_in_chunk[0] - 1:
+            #     ret_bi[heads_in_chunk[0]] = 1
+            #     heads_in_chunk.pop(0)
+            #     continue
+            # chunk_id = w2ch[heads_in_chunk[0]]
+            head_idx = heads_in_chunk[0]
+
+            for ridx in range(start, end):
+                if head_idx not in anc_array[ridx]:
+                    ret_bi[ridx] = 0
+                    heads_in_chunk.pop(0)
+                    break
+
+            if len(heads_in_chunk) > 1:
+                heads_in_chunk.pop(0)
+
+            # new_start = isAncestorOf(heads_in_chunk[0] - start, parents[start:end])
+            # if len(ret_bi) <= start + new_start:
+            #     heads_in_chunk.pop(0)
+            #     continue
+            # ret_bi[start + new_start] = B_tag_idx
+            # heads_in_chunk.pop(0)
+
+    chunk_ranges = ranges(ret_bi, B_tag_idx)
+    w2ch = align_word_chunk(ret_bi, B_tag_idx)
+
+    # for ridx, r in enumerate(chunk_ranges[1:]):
+    #     start = r[0]
+    #     end = r[1]
+    #     heads_in_chunk = []
+    #
+    #     for w in range(start, end):
+    #         if parents[w] < start or end <= parents[w]:
+    #             # set_heads.add(w)
+    #             dep_tuples.append((w, parents[w]))
+    #             # heads_in_chunk.append(w)
+
+    for dt in dep_tuples:
+        if not dt[1] in set_heads:
+            r = chunk_ranges[w2ch[dt[1]]]
+            start, end = r[0], r[1]
+            head_idx = dt[1]
+
+            for ridx in range(start, end):
+                if head_idx not in anc_array[ridx]:
+                    ret_bi[ridx] = 0
+                    break
+
+    return ret_bi[1:]
+
+
+#
+# def convertChunks(bi_chunk, parents, rels, tags, parser, rd, td):
+#     # add root index into each feature array
+#
+#     B_tag_idx = parser._B_tag_id
+#     bi_chunk = [0] + bi_chunk
+#     parents = [0] + parents
+#     rels = [0] + rels
+#     tags = [0] + tags
+#
+#     chunk_ranges = ranges(bi_chunk, B_tag_idx)
+#     ret_bi = [0] + bi_chunk.copy()
+#
+#     # tuple of (head in a chunk, its parent)
+#     dep_tuples = []
+#
+#     # set of tokens which has at least one child
+#     set_chunk_heads = set([0])
+#     w2ch = align_word_chunk(bi_chunk, B_tag_idx)
+#
+#     for ridx, r in enumerate(chunk_ranges[1:]):
+#         start = r[0]
+#         end = r[1]
+#         heads_in_chunk = []
+#
+#         for w in range(start, end):
+#             if parents[w] < start or end <= parents[w]:
+#                 # set_heads.add(w)
+#                 # dep_tuples[-1].append((w, heads[w]))
+#                 set_chunk_heads.add(w)
+#                 heads_in_chunk.append(w)
+#                 dep_tuples.append((w, parents[w]))
+#             # if rels[w] == parser._mwe_id:
+#             #     ret_bi[w] = 1
+#             # if rels[w] == parser._acl_id:
+#             #     ret_bi[w] = 0
+#             # # if rels[w - 1] == parser._conj_id and rels[w] == parser._case_id:
+#             # #     ret_bi[w - 1] = 1
+#             # if rels[w - 1] == rd.x2i['compound'] and rels[w] == rd.x2i['nmod'] and rels[w + 1] == rd.x2i['case']:
+#             #     ret_bi[w] = 0
+#             # if rels[w - 1] == rd.x2i['cc'] and rels[w] == rd.x2i['compound'] and rels[w + 1] == rd.x2i['conj']:
+#             #     ret_bi[w] = 1
+#             # if rels[w - 1] == rd.x2i['cc'] and rels[w] == rd.x2i['conj'] and rels[w + 1] == rd.x2i['case']:
+#             #     ret_bi[w] = 1
+#             # if rels[w] == rd.x2i['advcl']:
+#             #     ret_bi[w] = 0
+#             # if rels[w - 1] == rd.x2i['nummod'] and rels[w] == rd.x2i['punct'] and rels[w + 1] == rd.x2i['dep']:
+#             #     ret_bi[w + 1] = 1
+#             # if rels[w - 1] == rd.x2i['punct'] and rels[w] == rd.x2i['nummod'] and rels[w + 1] == rd.x2i['compound']:
+#             #     ret_bi[w] = 1
+#             # if rels[w - 1] == rd.x2i['aux'] and rels[w] == rd.x2i['neg'] and rels[w + 1] == rd.x2i['nmod']:
+#             #     ret_bi[w + 1] = 0
+#             # if rels[w - 1] == rd.x2i['case'] and rels[w] == rd.x2i['dep'] and rels[w + 1] == rd.x2i['dep']:
+#             #     ret_bi[w] = 0
+#             # if rels[w - 1] == rd.x2i['case'] and rels[w] == rd.x2i['acl'] and rels[w + 1] == rd.x2i['nmod']:
+#             #     ret_bi[w + 1] = 0
+#             # if rels[w - 1] == rd.x2i['acl'] and rels[w] == rd.x2i['root']:
+#             #     ret_bi[w] = 0
+#             # if rels[w - 1] == rd.x2i['nmod'] and rels[w] == rd.x2i['case'] and rels[w + 1] == rd.x2i['case']:
+#             #     ret_bi[w - 1] = 0
+#             # if rels[w - 1] == rd.x2i['conj'] and rels[w] == rd.x2i['punct'] and rels[w + 1] == rd.x2i['conj']:
+#             #     ret_bi[w - 1] = 0
+#             #     ret_bi[w + 1] = 0
+#             # if rels[w] == rd.x2i['conj'] and rels[w + 1] == rd.x2i['case']:
+#             #     ret_bi[w] = 0
+#
+#             # if tags[w - 1] == td.x2i['CONJ'] and tags[w] == td.x2i['NOUN']:
+#             #     ret_bi[w] = 1
+#
+#         # dep_tuples.append([])
+#
+#         while len(heads_in_chunk) > 1:
+#             # if heads[heads_in_chunk[0]] == heads_in_chunk[0] - 1:
+#             #     ret_bi[heads_in_chunk[0]] = 1
+#             #     heads_in_chunk.pop(0)
+#             #     continue
+#             new_start = newChunk(heads_in_chunk[0], parents, start, end)
+#             if len(ret_bi) <= start + new_start:
+#                 heads_in_chunk.pop(0)
+#                 continue
+#             ret_bi[start + new_start] = B_tag_idx
+#             heads_in_chunk.pop(0)
+#
+#     chunk_ranges = ranges(ret_bi, B_tag_idx)
+#     w2ch = align_word_chunk(ret_bi, B_tag_idx)
+#
+#     for ridx, r in enumerate(chunk_ranges[1:]):
+#         start = r[0]
+#         end = r[1]
+#         heads_in_chunk = []
+#
+#         for w in range(start, end):
+#             if heads[w] < start or end < heads[w]:
+#                 set_heads.add(w)
+#                 dep_tuples.append((w, heads[w]))
+#                 heads_in_chunk.append(w)
+#
+#     for didx, dt in enumerate(dep_tuples):
+#         if not dt[1] in set_heads:
+#             r = chunk_ranges[w2ch[dt[1]]]
+#             start, end = r[0], r[1]
+#
+#             new_start = isAncestorOf(dt[1] - start, heads[start:end])
+#             ret_bi[start + new_start] = B_tag_idx
+#
+#     return ret_bi[1:]
+#
+#
+#
+#
+#
+
+
+
+def align_word_chunk(bi_chunk, B_tag_idx=0, with_root=True):
     word2chunk = [0]
+
+    if not with_root:
+        bi_chunk = [0] + bi_chunk
 
     chunk_idx = 0
     for bi in bi_chunk[1:]:
@@ -204,7 +604,7 @@ def uniLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.,
     return inputs
 
 
-def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0., bidir_input=True, inputs_f=None, inputs_b=None):
+def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
     fs, bs = inputs, inputs
 
     for fb, bb in builders:
@@ -214,37 +614,24 @@ def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0., 
         if batch_size is not None:
             fb.set_dropout_masks(batch_size)
             bb.set_dropout_masks(batch_size)
-        fs, bs = f.transduce(inputs if bidir_input else fs), b.transduce(reversed(inputs if bidir_input else bs))
-        inputs = [dy.concatenate([f,b]) for f, b in zip(fs, reversed(bs))]
-        # inputs_f, inputs_b = [f for f in fs], [b for b in bs]
+        fs, bs = f.transduce(inputs), b.transduce(reversed(inputs))
+        inputs = [dy.concatenate([f, b]) for f, b in zip(fs, reversed(bs))]
+
+    bs = [b for b in reversed(bs)]
+
     return inputs, fs, bs
 
 
 def segment_embds(l2r_outs, r2l_outs, ranges, offset=0, segment_concat=False):
     ret = []
-    if offset == 0:
-        st = 0
-        en = len(ranges)
-    elif offset == -1:
-        st = 0
-        en = len(ranges)
-        offset = 0
-    else:
-        st = offset
-        en = -offset
 
-    # for r in ranges[st:en]:
     for r in ranges:
-        # start = r[0] - offset
-        # end = r[1] - offset
         start = r[0] + offset
         end = r[1] + offset
 
         if segment_concat:
             l2r = l2r_outs[end - 1] + l2r_outs[start]
             r2l = r2l_outs[start] + r2l_outs[end - 1]
-            # l2r = l2r_outs[end - 1]
-            # r2l = r2l_outs[start]
         else:
             l2r = l2r_outs[end - 1] - l2r_outs[start - 1]
             r2l = r2l_outs[start] - r2l_outs[end]

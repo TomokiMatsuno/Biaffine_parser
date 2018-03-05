@@ -6,13 +6,15 @@ pdrop_lstm = 0.33
 layers = 1
 mlp_dim = 600
 arc_dim = 500
-layers_word = 2
-layers_chunk = 1
+layers_word = 1
+layers_chunk = 2
 
-all_100 = not True
+all_100 = True
 if all_100:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
     mlp_dim += 100
+    layers_word = 1
+    layers_chunk = 1
 
 biaffine_bias_x_arc = True
 biaffine_bias_y_arc = False
@@ -36,17 +38,17 @@ show_acc = 1000
 minimal_count = 2
 early_stop = 10
 save_file = "parameter"
-load_file_num = 19
+load_file_num = 34
 load_file = str(load_file_num) + "/parameter"
 
 isTest = not True
 
-las = True
+las = not True
 
-overfit = False
+overfit = not True
 
 small_data = not True
-save = True
+save = not True
 random_pickup = True
 no_reg = not True
 
