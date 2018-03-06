@@ -61,6 +61,47 @@ def omit_invalid_sents(word_ids, tag_ids, head_ids, rel_ids, bi_ids, B_tag_id, p
     return word_ids, tag_ids, head_ids, rel_ids, bi_ids
 
 
+def re_chunk(heads, bi_chunk):
+    bi_chunk = [0] + bi_chunk
+    chunk_ranges = ranges(bi_chunk)
+    w2ch = align_word_chunk(bi_chunk)
+    heads = [0] + heads
+    ret = []
+    rechunk_flag = [0]
+
+    set_heads = set()
+    for idx in range(len(chunk_ranges[1:])):
+
+        start, end = chunk_ranges[idx + 1]
+        num_heads = 0
+        for w in range(start, end):
+            parent_id = heads[w]
+            if parent_id < start or end <= parent_id:
+                num_heads += 1
+                set_heads.add(parent_id)
+                if num_heads > 1:
+                    rechunk_flag.append(1)
+                    break
+        if num_heads <= 1:
+            rechunk_flag.append(0)
+
+    for idx, h in enumerate(heads):
+        if h not in set_heads:
+            rechunk_flag[w2ch[h]] = 1
+
+    for idx, r in enumerate(chunk_ranges):
+        if rechunk_flag[idx] == 1:
+            ret.extend([0] * (r[1] - r[0]))
+        else:
+            ret.extend(bi_chunk[r[0]:r[1]])
+
+    return ret[1:]
+
+
+
+
+
+
 
 
 
@@ -620,6 +661,21 @@ def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
     bs = [b for b in reversed(bs)]
 
     return inputs, fs, bs
+
+
+def inter_chunk_mask(heads, bi_chunk):
+    chunk_ranges = ranges(bi_chunk)
+    heads = heads
+    ret = []
+
+    for idx in range(len(heads)):
+        parent_id = heads[idx]
+        start, end = chunk_ranges[idx + 1]
+        is_outside = parent_id < start or end <= parent_id
+
+        ret.append(1 if is_outside else 0)
+
+    return ret
 
 
 def segment_embds(l2r_outs, r2l_outs, ranges, offset=0, segment_concat=False):

@@ -66,3 +66,4 @@ initial_entries = ['UNK']
 const_init = not True
 japanese = True
 num_sents = 0
+exclude_puncts = True

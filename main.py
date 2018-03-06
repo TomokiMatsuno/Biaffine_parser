@@ -39,6 +39,10 @@ word_ids[1], tag_ids[1], head_ids[1], rel_ids[1] = ids_val[1], ids_val[2], ids_v
 
 bi_ids[0], bi_ids[1] = [[0 if bi == 'B' else 1 for bi in bi_sent] for bi_sent in ids_train[5]], [[0 if bi == 'B' else 1 for bi in bi_sent] for bi_sent in ids_val[5]]
 
+for step in range(len(bi_ids)):
+    for i in range(len(bi_ids[step])):
+        bi_ids[step][i] = utils.re_chunk(head_ids[step][i], bi_ids[step][i])
+
 
 # embs_word = wd.get_pret_embs()
 embs_word = None
@@ -274,8 +278,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
         loss, num_cor_arc, num_cor_arc_intra, num_arc_intra, num_cor_rel, cor_rels, gold_rels, preds_rels, cor_bi, cor_inter, num_inter, num_suc = parser.run(seq_w, seq_t, seq_h, seq_r, seq_bi, isTrain)
         losses_batch.append(dy.sum_batches(loss))
 
-        # tot_tokens += len(seq_w) - punct_count
-        tot_tokens += len(seq_w)
+        tot_tokens += len(seq_w) - punct_count * config.exclude_puncts
         tot_arc_intra += num_arc_intra
         tot_cor_arc += num_cor_arc
         tot_cor_arc_intra += num_cor_arc_intra
