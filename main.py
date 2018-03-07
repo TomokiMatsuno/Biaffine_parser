@@ -23,6 +23,7 @@ file_val = paths.test_file if config.isTest else paths.dev_file
 # file_val = paths.dev_file if config.isTest else paths.dev_file
 
 col_indices = [0, 1, 3, 6, 7, 10] if config.japanese else [0, 1, 3, 6, 7]
+# col_indices = [0, 1, 3, 6, 7]
 
 sents_train, sents_val = pre.files2sents(file_train, col_indices), pre.files2sents(file_val, col_indices)
 if config.num_sents > 0:
@@ -33,6 +34,7 @@ indices = [sents_train[0], sents_val[0]]
 ids_train, ids_val = pre.sents2ids(sents_train, dicts, indices[0], no_dict=[0, 3, 5]), pre.sents2ids(sents_val, dicts, indices[1], no_dict=[0, 3, 5])
 
 wd, td, rd, bid = dicts[1], dicts[2], dicts[4], dicts[5]
+# wd, td, rd = dicts[1], dicts[2], dicts[4]
 word_ids, tag_ids, head_ids, rel_ids, bi_ids = [[], []], [[], []], [[], []], [[], []], [[], []]
 word_ids[0], tag_ids[0], head_ids[0], rel_ids[0] = ids_train[1], ids_train[2], ids_train[3], ids_train[4]
 word_ids[1], tag_ids[1], head_ids[1], rel_ids[1] = ids_val[1], ids_val[2], ids_val[3], ids_val[4]
@@ -142,9 +144,9 @@ for step in range(len(bi_ids)):
 print('num_multi_head_chunk ', num_multi_head_chunk)
 print('num_conj', num_conj)
 print('num_mwe', num_mwe)
-# print('num_punct', num_punct)
+print('num_punct', num_punct)
 
-
+print('')
 
 
 # bi_ids[0] = [utils.convertChunks(bi_id, head_id, parser._B_tag_id) for bi_id, head_id in zip(bi_ids[0], head_ids[0])]
@@ -266,23 +268,12 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
                                                                head_ids[sent_id], rel_ids[sent_id], bi_ids[sent_id]
 
         seq_bi = [parser._B_tag_id] + seq_bi
-        # seq_bi = seq_bi
 
-        # heads_inter, heads_intra, chunk_heads = utils.inter_intra_dep(seq_h, seq_bi, parser._B_tag_id, seq_r, parser._punct_id)
-        # back = utils.word_dep(heads_inter, heads_intra, chunk_heads=chunk_heads, bi_chunk=seq_bi, B_tag_idx=parser._B_tag_id)
-        #
-        # punct_mask = np.array([1 if rel != parser._punct_id else 0 for rel in seq_r])
         punct_count = 0
 
         for r in seq_r:
             if r == parser._punct_id:
                 punct_count += 1
-
-        # if len(seq_h) - punct_count != np.sum(np.multiply(np.equal(back, seq_h), punct_mask)):
-        #     tot_failed += 1
-        #     continue
-
-        # continue
 
         if not isTrain:
             dy.renew_cg()
@@ -358,10 +349,8 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
         #         print('precision', cnt_cor_rel[ri] / (cnt_preds_rel[ri] if cnt_preds_rel[ri] != 0 else 1.), end='\t')
         #         print('f1', (2 * cnt_cor_rel[ri] / (cnt_gold_rel[ri] + cnt_preds_rel[ri])) if (cnt_gold_rel[ri] + cnt_preds_rel[ri]) else 0.)
 
-    print('cor bi', tot_cor_bi / tot_tokens)
-    # print('suc rate', tot_num_suc / tot_tokens)
-    # print('not matched ', parser.not_matched)
-
+        print('cor bi', tot_cor_bi / tot_tokens)
+        # print('suc rate', tot_num_suc / tot_tokens)
 
     return
 
@@ -381,10 +370,10 @@ for e in range(config.epoc):
 
     isTrain = False
     if not config.small_data:
-        # train_dev(word_ids[1], tag_ids[1], head_ids[1], rel_ids[1], bi_ids[1], indices[1], isTrain)
         train_dev(word_ids[1], tag_ids[1], head_ids[1], rel_ids[1], bi_ids[1], indices[1], isTrain)
     else:
         train_dev(word_ids[0], tag_ids[0], head_ids[0], rel_ids[0], bi_ids[0], indices[0], isTrain)
+
     timer.from_prev()
 
     if config.save and not config.isTest:

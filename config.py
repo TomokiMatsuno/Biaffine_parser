@@ -6,10 +6,11 @@ pdrop_lstm = 0.33
 layers = 1
 mlp_dim = 600
 arc_dim = 500
+chunk_dim = 100
 layers_word = 2
 layers_chunk = 1
 
-all_100 = True
+all_100 = not True
 if all_100:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
     mlp_dim += 100

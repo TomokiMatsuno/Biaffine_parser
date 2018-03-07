@@ -173,7 +173,7 @@ def re_chunk(heads, bi_chunk):
 
     return ret[1:]
 
-
+# # accuracy 92.6%
 def chunk_tags(rels, func, words, func_begin, func_end, indp, prefix, subob, posfunc, poscont, tags, td, rd):
     ret = []
     flag_cont = False
@@ -195,7 +195,8 @@ def chunk_tags(rels, func, words, func_begin, func_end, indp, prefix, subob, pos
                 (r_prev not in prefix and r in subob) or \
                 (w in func_begin) or \
                 (words[idx - 1] in func_end and rels[idx] not in func) or \
-                (rels[idx] in [rd.x2i['acl'], rd.x2i['amod']] and rels[idx + 1] not in func):
+                (rels[idx] in [rd.x2i['acl'], rd.x2i['amod']] and rels[idx + 1] not in func) or \
+                (rels[idx - 1] not in func and rels[idx] in prefix):
             ret.append(0)
             flag_cont = False
         elif ((w in func_begin or
@@ -218,6 +219,52 @@ def chunk_tags(rels, func, words, func_begin, func_end, indp, prefix, subob, pos
         r_prev = r
 
     return ret
+
+
+#
+# def chunk_tags(rels, func, words, func_begin, func_end, indp, prefix, subob, posfunc, poscont, tags, td, rd):
+#     ret = []
+#     flag_cont = False
+#     r_prev = 0
+#
+#     for idx in range(len(words)):
+#         w, r, t = words[idx], rels[idx], tags[idx]
+#
+#         if ((r_prev in [rd.x2i['cc'], rd.x2i['punct']]) and (r == rd.x2i['conj'])) or\
+#                 (r == rd.x2i['dep'] and t in posfunc and r_prev != 0):
+#             # (rels[idx - 1] in [rd.x2i['cc']] and r in [rd.x2i['compound']] and rels[idx + 1] in [rd.x2i['conj']]) or \
+#             ret.append(1)
+#             # flag_cont = True
+#         elif r in indp or \
+#                 (r_prev == rd.x2i['nmod'] and r not in func) or \
+#                 (r == rd.x2i['cc'] and r_prev == 0) or \
+#                 (r_prev == rd.x2i['conj'] and r == rd.x2i['nmod']) or \
+#                 (r == rd.x2i['dep'] and t in poscont) or \
+#                 (r_prev not in prefix and r in subob) or \
+#                 (w in func_begin) or \
+#                 (words[idx - 1] in func_end):
+#             ret.append(0)
+#             flag_cont = False
+#         elif ((w in func_begin or
+#               r not in func or
+#                (r_prev == 0))) \
+#             and not flag_cont:
+#             ret.append(0)
+#             flag_cont = True
+#         else:
+#             ret.append(1)
+#
+#
+#         # if r in func and not (r == rd.x2i['dep'] and t == td.x2i['NOUN']):
+#         if r in func or (r == rd.x2i['dep'] and t == td.x2i['ADP']):
+#             flag_cont = False
+#         if r == rd.x2i['punct'] and t == td.x2i['SYM'] and rels[idx + 1] == rd.x2i['conj']:
+#             flag_cont = True
+#
+#         r_prev = r
+#
+#     return ret
+
 
 
 def word_dep(inter_dep, intra_dep, bi_chunk, chunk_heads, B_tag_idx):
