@@ -404,12 +404,32 @@ class Parser(object):
             len_chunk_dep = chunk_child[1] - chunk_child[0]
             len_chunk_head = chunk_child[1] - chunk_child[0] + chunk_parent[1] - chunk_parent[0] + 1
 
+
+            len_chunk_parent = chunk_parent[1] - chunk_parent[0]
+
             # root token + embds of words in child chunk + embds of words in parent chunk
-            embs_intra_arc = [dy.select_cols(lstm_outs_word, [idx]) for idx in col_range_child + col_range_parent]
+            left_chunk = col_range_child
+            right_chunk = col_range_parent
+
+            if chunk_child[0] > chunk_parent[0]:
+                left_chunk, right_chunk = right_chunk, left_chunk
+                # len_chunk_dep, len_chunk_head = len_chunk_head, len_chunk_dep
+
+            embs_intra_arc = [dy.select_cols(lstm_outs_word, [idx]) for idx in left_chunk + right_chunk]
             embs_intra_arc = [self.emb_root_intra[0]] + embs_intra_arc
             embs_intra_arc, _, _ = utils.biLSTM(self.LSTM_Builders_word_2, embs_intra_arc, 1, self._pdrop_lstm, self._pdrop_lstm)
-            embs_intra_arc_dep = dy.concatenate_cols(embs_intra_arc[1:len(col_range_child) + 1])
-            embs_intra_arc_head = dy.concatenate_cols(embs_intra_arc)
+
+            # embs_intra_arc_dep = dy.concatenate_cols(embs_intra_arc[1:len(left_chunk) + 1])
+            # embs_intra_arc_head = dy.concatenate_cols(embs_intra_arc)
+
+            if chunk_child[0] <= chunk_parent[0]:
+                embs_intra_arc_dep = dy.concatenate_cols(embs_intra_arc[1:-len_chunk_parent])
+                embs_intra_arc_head = dy.concatenate_cols(embs_intra_arc)
+            else:
+                embs_intra_arc_dep = dy.concatenate_cols(embs_intra_arc[len_chunk_parent + 1:])
+                embs_intra_arc_head = dy.concatenate_cols(embs_intra_arc)
+
+
             # chunk_embs = dy.concatenate_cols([self.emb_root_intra_chunk[0]] + [bidirouts_chunk[idx + 1]] * len(col_range_child) + [bidirouts_chunk[heads_inter[idx]]] * len(col_range_parent))
             # chunk_embs_dep = dy.concatenate_cols([bidirouts_chunk[idx + 1]] * len(col_range_child))
             # embs_intra_arc = R_arc_chunk * dy.concatenate([embs_intra_arc, chunk_embs])

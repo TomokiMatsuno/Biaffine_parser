@@ -48,15 +48,15 @@ func_end = [wd.x2i[w] for w in ['」', '）', '”', '』']]
 indp = [rd.x2i[r] for r in ['advcl', 'advmod']]
 prefix = [rd.x2i[r] for r in ['compound', 'nummod']]
 subob =  [rd.x2i[r] for r in ['nsubj', 'iobj', 'dobj', 'nsubjpass']]
-posfunc =  [td.x2i[t] for t in ['ADV', 'ADP', 'AUX']]
-poscont =  [td.x2i[t] for t in ['NOUN', 'PROPN']]
+posfunc =  [td.x2i[t] for t in ['ADV', 'ADP', 'AUX', 'PART']]
+poscont =  [td.x2i[t] for t in ['NOUN', 'PROPN', 'ADJ']]
 for step in range(len(rel_ids)):
     for i in range(len(rel_ids[step])):
         bi_ids[step].append(utils.chunk_tags(rel_ids[step][i], func, word_ids[step][i], func_begin, func_end, indp, prefix, subob, posfunc, poscont, tag_ids[step][i], td, rd))
 
-for step in range(len(bi_ids)):
-    for i in range(len(bi_ids[step])):
-        bi_ids[step][i] = utils.re_chunk(head_ids[step][i], bi_ids[step][i])
+# for step in range(len(bi_ids)):
+#     for i in range(len(bi_ids[step])):
+#         bi_ids[step][i] = utils.re_chunk(head_ids[step][i], bi_ids[step][i])
 
 # embs_word = wd.get_pret_embs()
 embs_word = None
@@ -125,11 +125,11 @@ for step in range(len(bi_ids)):
                         set_head_par.add(w2ch[seq_h[i]])
                         list_rel.append(seq_r[i])
             if len(set_head_par) > 1 and parser._punct_id not in list_rel and id not in difficult_sents:
-            # if len(set_head_par) > 1:
-                print(list_rel)
-                for rel in list_rel:
-                    print(rd.i2x[rel], end='\t')
-                print('')
+
+
+
+
+
                 num_multi_head_chunk += 1
 
                 if parser._punct_id not in list_rel:
