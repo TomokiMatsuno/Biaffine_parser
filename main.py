@@ -16,6 +16,8 @@ import parser
 import config
 import timer
 
+import global_vars
+
 timer = timer.Timer()
 
 file_train = paths.train_file
@@ -37,11 +39,36 @@ word_ids, tag_ids, head_ids, rel_ids, bi_ids = [[], []], [[], []], [[], []], [[]
 word_ids[0], tag_ids[0], head_ids[0], rel_ids[0] = ids_train[1], ids_train[2], ids_train[3], ids_train[4]
 word_ids[1], tag_ids[1], head_ids[1], rel_ids[1] = ids_val[1], ids_val[2], ids_val[3], ids_val[4]
 
-bi_ids[0], bi_ids[1] = [[0 if bi == 'B' else 1 for bi in bi_sent] for bi_sent in ids_train[5]], [[0 if bi == 'B' else 1 for bi in bi_sent] for bi_sent in ids_val[5]]
+bi_ids = [[], []]
 
-for step in range(len(bi_ids)):
-    for i in range(len(bi_ids[step])):
-        bi_ids[step][i] = utils.re_chunk(head_ids[step][i], bi_ids[step][i])
+func = [rd.x2i[r] for r in ['aux', 'case', 'auxpass', 'punct', 'cop', 'mark', 'neg', 'mwe', 'cc']]
+func_begin = [wd.x2i[w] for w in ['「', '（', '“', '『']]
+func_end = [wd.x2i[w] for w in ['」', '）', '”', '』']]
+indp = [rd.x2i[r] for r in ['advcl', 'advmod']]
+prefix = [rd.x2i[r] for r in ['compound', 'nummod']]
+subob =  [rd.x2i[r] for r in ['nsubj', 'iobj', 'dobj', 'nsubjpass']]
+posfunc =  [td.x2i[t] for t in ['ADV', 'ADP']]
+poscont =  [td.x2i[t] for t in ['NOUN', 'PROPN']]
+for step in range(len(rel_ids)):
+    for i in range(len(rel_ids[step])):
+        bi_ids[step].append(utils.chunk_tags(rel_ids[step][i], func, word_ids[step][i], func_begin, func_end, indp, prefix, subob, posfunc, poscont, tag_ids[step][i], td, rd))
+
+# bi_ids[0], bi_ids[1] = [[0 if bi == 'B' else 1 for bi in bi_sent] for bi_sent in ids_train[5]], [[0 if bi == 'B' else 1 for bi in bi_sent] for bi_sent in ids_val[5]]
+#
+# tot_chunk = 0
+#
+# for step in range(len(bi_ids)):
+#     for i in range(len(bi_ids[step])):
+#         bi_ids[step][i] = utils.re_chunk(head_ids[step][i], bi_ids[step][i])
+#         tot_chunk += sum(np.equal(bi_ids[step][i], np.zeros(len(bi_ids[step][i]))))
+
+print(global_vars.not_head_parents)
+print(global_vars.multi_head_chunks)
+# print(global_vars.not_head_parents / tot_chunk)
+# print(global_vars.multi_head_chunks / tot_chunk)
+# print(tot_chunk)
+
+
 
 
 # embs_word = wd.get_pret_embs()
@@ -80,9 +107,9 @@ num_conj = 0
 num_mwe = 0
 num_punct = 0
 
-for step in range(len(word_ids)):
-    word_ids[step], tag_ids[step], head_ids[step], rel_ids[step], bi_ids[step] = utils.omit_invalid_sents(word_ids[step], tag_ids[step], head_ids[step], rel_ids[step], bi_ids[step],
-                                                                            B_tag_id=0, punct_id=rd.x2i['punct'])
+# for step in range(len(word_ids)):
+#     word_ids[step], tag_ids[step], head_ids[step], rel_ids[step], bi_ids[step] = utils.omit_invalid_sents(word_ids[step], tag_ids[step], head_ids[step], rel_ids[step], bi_ids[step],
+#                                                                             B_tag_id=0, punct_id=rd.x2i['punct'])
 bi_ids_new = [[], []]
 
 for step in range(len(bi_ids)):
@@ -90,8 +117,7 @@ for step in range(len(bi_ids)):
         seq_bi, seq_h, seq_r = bi_ids[step][id], head_ids[step][id], rel_ids[step][id]
         w2ch = utils.align_word_chunk(seq_bi, parser._B_tag_id, with_root=False)
 
-        heads_inter, heads_intra, chunk_heads = utils.inter_intra_dep(seq_h, [0] + seq_bi, parser._B_tag_id, seq_r,
-                                                                      parser._punct_id)
+        heads_inter, heads_intra, chunk_heads = utils.inter_intra_dep(seq_h, [0] + seq_bi, parser._B_tag_id)
         back = utils.word_dep(heads_inter, heads_intra, chunk_heads=chunk_heads, bi_chunk=[0]+seq_bi,
                               B_tag_idx=parser._B_tag_id)
 
@@ -110,8 +136,8 @@ for step in range(len(bi_ids)):
                     if w2ch[seq_h[i]] not in set_head_par:
                         set_head_par.add(w2ch[seq_h[i]])
                         list_rel.append(seq_r[i])
-            if len(set_head_par) > 1 and parser._punct_id not in list_rel:
-            # if len(set_head_par) > 1:
+            # if len(set_head_par) > 1 and parser._punct_id not in list_rel:
+            if len(set_head_par) > 1:
                 print(list_rel)
                 for rel in list_rel:
                     print(rd.i2x[rel], end='\t')
@@ -130,7 +156,7 @@ for step in range(len(bi_ids)):
 print('num_multi_head_chunk ',num_multi_head_chunk)
 print('num_conj', num_conj)
 print('num_mwe', num_mwe)
-# print('num_punct', num_punct)
+print('num_punct', num_punct)
 
 
 
@@ -256,7 +282,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
         seq_bi = [parser._B_tag_id] + seq_bi
         # seq_bi = seq_bi
 
-        heads_inter, heads_intra, chunk_heads = utils.inter_intra_dep(seq_h, seq_bi, parser._B_tag_id, seq_r, parser._punct_id)
+        heads_inter, heads_intra, chunk_heads = utils.inter_intra_dep(seq_h, seq_bi, parser._B_tag_id)
         back = utils.word_dep(heads_inter, heads_intra, chunk_heads=chunk_heads, bi_chunk=seq_bi, B_tag_idx=parser._B_tag_id)
 
         punct_count = 0
@@ -275,7 +301,9 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
         if not isTrain:
             dy.renew_cg()
 
-        loss, num_cor_arc, num_cor_arc_intra, num_arc_intra, num_cor_rel, cor_rels, gold_rels, preds_rels, cor_bi, cor_inter, num_inter, num_suc = parser.run(seq_w, seq_t, seq_h, seq_r, seq_bi, isTrain)
+        loss, num_cor_arc, num_cor_arc_intra, num_arc_intra, \
+        num_cor_rel, cor_rels, gold_rels, preds_rels, cor_bi \
+            = parser.run(seq_w, seq_t, seq_h, seq_r, seq_bi, isTrain)
         losses_batch.append(dy.sum_batches(loss))
 
         tot_tokens += len(seq_w) - punct_count * config.exclude_puncts
@@ -285,9 +313,9 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
         tot_cor_arc_inter += num_cor_arc - num_cor_arc_intra
         tot_cor_rel += num_cor_rel
         tot_cor_bi += cor_bi - 1
-        tot_cor_inter += cor_inter
-        tot_inter += num_inter
-        tot_num_suc += num_suc
+        tot_cor_inter += 0
+        tot_inter += sum(np.equal(seq_bi, np.zeros(len(seq_bi)))) - 1
+        # tot_num_suc += num_suc
 
         if not isTrain:
             for elem in cor_rels:

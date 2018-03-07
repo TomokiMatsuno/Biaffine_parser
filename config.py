@@ -48,7 +48,7 @@ las = True
 overfit = not True
 
 small_data = not True
-save = not True
+save = True
 random_pickup = True
 no_reg = not True
 
@@ -66,4 +66,4 @@ initial_entries = ['UNK']
 const_init = not True
 japanese = True
 num_sents = 0
-exclude_puncts = True
+exclude_puncts = not True
