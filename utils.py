@@ -116,6 +116,7 @@ def inter_intra_dep(parents_word, bi_chunk, B_tag_idx, rels, punct_idx):
                     child.append(0)
                 else:
                     child.append(par_outside[idx].pop(0) - par_start + len(intra_dep[idx]))
+                    # child.append(par_outside[idx].pop(0) - par_start)
             else:
                 if elem > len(intra_dep[idx]) + len(intra_dep[inter_dep[idx] - 1]) + 3:
                     print('error')
@@ -159,10 +160,10 @@ def re_chunk(heads, bi_chunk):
         if num_heads <= 1:
             rechunk_flag.append(0)
 
-    for idx, h in enumerate(heads):
-        if h not in set_heads:
-            rechunk_flag[w2ch[h]] = 1
-
+    # for idx, h in enumerate(heads):
+    #     if h not in set_heads:
+    #         rechunk_flag[w2ch[h]] = 1
+    #
 
     for idx, r in enumerate(chunk_ranges):
         if rechunk_flag[idx] == 1:
@@ -182,7 +183,7 @@ def chunk_tags(rels, func, words, func_begin, func_end, indp, prefix, subob, pos
         w, r, t = words[idx], rels[idx], tags[idx]
 
         if ((r_prev in [rd.x2i['cc'], rd.x2i['punct']]) and (r == rd.x2i['conj'])) or\
-            r == rd.x2i['dep'] and t in posfunc:
+                (r == rd.x2i['dep'] and t in posfunc and r_prev != 0):
             # (rels[idx - 1] in [rd.x2i['cc']] and r in [rd.x2i['compound']] and rels[idx + 1] in [rd.x2i['conj']]) or \
             ret.append(1)
             # flag_cont = True
@@ -193,11 +194,14 @@ def chunk_tags(rels, func, words, func_begin, func_end, indp, prefix, subob, pos
                 (r == rd.x2i['dep'] and t in poscont) or \
                 (r_prev not in prefix and r in subob) or \
                 (w in func_begin) or \
-                (words[idx - 1] in func_end):
+                (words[idx - 1] in func_end and rels[idx] not in func) or \
+                (rels[idx] in [rd.x2i['acl'], rd.x2i['amod']] and rels[idx + 1] not in func):
             ret.append(0)
             flag_cont = False
         elif ((w in func_begin or
-              r not in func)) \
+              r not in func or
+               (r_prev == 0)) or
+              (rels[idx] == rd.x2i['case'] and tags[idx] == td.x2i['NOUN'])) \
             and not flag_cont:
             ret.append(0)
             flag_cont = True
@@ -238,7 +242,6 @@ def complete_sents(inters, intras, heads_chunk, bi_chunk):
     for idx, head in enumerate(heads_chunk):
         start_chd, end_chd = chunk_ranges[idx + 1]
         start_par, end_par = chunk_ranges[head]
-        intra = intras[idx]
         inter = inters[idx]
 
         tmp = [[] for i in range(len(inter))]
@@ -596,23 +599,23 @@ def inputs2singlelstmouts(lstm, inputs, pdrop):
     return lstm_outs
 
 
-def bilinear(x, W, y, input_size, seq_len, batch_size, num_outputs = 1, bias_x = False, bias_y = False):
+def bilinear(x, W, y, input_size, seq_len_dep, seq_len_head, batch_size, num_outputs = 1, bias_x = False, bias_y = False):
     # adopted from: https://github.com/jcyk/Dynet-Biaffine-dependency-parser/blob/master/lib/utils.py
 
     # x,y: (input_size x seq_len) x batch_size
     if bias_x:
-        x = dy.concatenate([x, dy.inputTensor(np.ones((1, seq_len), dtype=np.float32))])
+        x = dy.concatenate([x, dy.inputTensor(np.ones((1, seq_len_dep), dtype=np.float32))])
     if bias_y:
-        y = dy.concatenate([y, dy.inputTensor(np.ones((1, seq_len), dtype=np.float32))])
+        y = dy.concatenate([y, dy.inputTensor(np.ones((1, seq_len_head), dtype=np.float32))])
 
     nx, ny = input_size + bias_x, input_size + bias_y
     # W: (num_outputs x ny) x nx
     lin = W * x
     if num_outputs > 1:
-        lin = dy.reshape(lin, (ny, num_outputs*seq_len), batch_size = batch_size)
+        lin = dy.reshape(lin, (ny, num_outputs*seq_len_dep), batch_size = batch_size)
     blin = dy.transpose(y) * lin
     if num_outputs > 1:
-        blin = dy.reshape(blin, (seq_len, num_outputs, seq_len), batch_size = batch_size)
+        blin = dy.reshape(blin, (seq_len_dep, num_outputs, seq_len_head), batch_size = batch_size)
     # seq_len_y x seq_len_x if output_size == 1
     # seq_len_y x num_outputs x seq_len_x else
     return blin

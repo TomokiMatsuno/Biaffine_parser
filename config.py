@@ -9,7 +9,7 @@ arc_dim = 500
 layers_word = 2
 layers_chunk = 1
 
-all_100 = not True
+all_100 = True
 if all_100:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
     mlp_dim += 100

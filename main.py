@@ -46,7 +46,7 @@ func_end = [wd.x2i[w] for w in ['」', '）', '”', '』']]
 indp = [rd.x2i[r] for r in ['advcl', 'advmod']]
 prefix = [rd.x2i[r] for r in ['compound', 'nummod']]
 subob =  [rd.x2i[r] for r in ['nsubj', 'iobj', 'dobj', 'nsubjpass']]
-posfunc =  [td.x2i[t] for t in ['ADV', 'ADP']]
+posfunc =  [td.x2i[t] for t in ['ADV', 'ADP', 'AUX']]
 poscont =  [td.x2i[t] for t in ['NOUN', 'PROPN']]
 for step in range(len(rel_ids)):
     for i in range(len(rel_ids[step])):
@@ -92,11 +92,11 @@ num_conj = 0
 num_mwe = 0
 num_punct = 0
 
-for step in range(len(word_ids)):
-    word_ids[step], tag_ids[step], head_ids[step], rel_ids[step], bi_ids[step] = utils.omit_invalid_sents(word_ids[step], tag_ids[step], head_ids[step], rel_ids[step], bi_ids[step],
-                                                                            B_tag_id=0, punct_id=rd.x2i['punct'])
+# for step in range(len(word_ids)):
+#     word_ids[step], tag_ids[step], head_ids[step], rel_ids[step], bi_ids[step] = utils.omit_invalid_sents(word_ids[step], tag_ids[step], head_ids[step], rel_ids[step], bi_ids[step],
+#                                                                             B_tag_id=0, punct_id=rd.x2i['punct'])
 bi_ids_new = [[], []]
-
+difficult_sents = [347] # [347, 370]
 for step in range(len(bi_ids)):
     for id in range(len(bi_ids[step])):
         seq_bi, seq_h, seq_r = bi_ids[step][id], head_ids[step][id], rel_ids[step][id]
@@ -122,7 +122,7 @@ for step in range(len(bi_ids)):
                     if w2ch[seq_h[i]] not in set_head_par:
                         set_head_par.add(w2ch[seq_h[i]])
                         list_rel.append(seq_r[i])
-            if len(set_head_par) > 1 and parser._punct_id not in list_rel:
+            if len(set_head_par) > 1 and parser._punct_id not in list_rel and id not in difficult_sents:
             # if len(set_head_par) > 1:
                 print(list_rel)
                 for rel in list_rel:
@@ -139,7 +139,7 @@ for step in range(len(bi_ids)):
                     num_mwe += 1
 
 
-print('num_multi_head_chunk ',num_multi_head_chunk)
+print('num_multi_head_chunk ', num_multi_head_chunk)
 print('num_conj', num_conj)
 print('num_mwe', num_mwe)
 # print('num_punct', num_punct)
@@ -268,11 +268,11 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, bi_ids, indices, isTrain):
         seq_bi = [parser._B_tag_id] + seq_bi
         # seq_bi = seq_bi
 
-        heads_inter, heads_intra, chunk_heads = utils.inter_intra_dep(seq_h, seq_bi, parser._B_tag_id, seq_r, parser._punct_id)
-        back = utils.word_dep(heads_inter, heads_intra, chunk_heads=chunk_heads, bi_chunk=seq_bi, B_tag_idx=parser._B_tag_id)
-
+        # heads_inter, heads_intra, chunk_heads = utils.inter_intra_dep(seq_h, seq_bi, parser._B_tag_id, seq_r, parser._punct_id)
+        # back = utils.word_dep(heads_inter, heads_intra, chunk_heads=chunk_heads, bi_chunk=seq_bi, B_tag_idx=parser._B_tag_id)
+        #
+        # punct_mask = np.array([1 if rel != parser._punct_id else 0 for rel in seq_r])
         punct_count = 0
-        punct_mask = np.array([1 if rel != parser._punct_id else 0 for rel in seq_r])
 
         for r in seq_r:
             if r == parser._punct_id:

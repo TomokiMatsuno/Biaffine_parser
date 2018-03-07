@@ -121,6 +121,8 @@ class Parser(object):
                                              init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.R_arc_chunk = self._pc.add_parameters((hidden_dim * 2, hidden_dim * 4),
                                              init=(dy.ConstInitializer(0.) if config.const_init else None))
+        self.R_arc_chunk_dep = self._pc.add_parameters((hidden_dim * 2, hidden_dim * 4),
+                                             init=(dy.ConstInitializer(0.) if config.const_init else None))
         # self.R_head_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim * 2),
         #                                      init=(dy.ConstInitializer(0.) if config.const_init else None))
         self.R_dep_rel = self._pc.add_parameters((self._rel_dim, self._rel_dim * 2),
@@ -309,7 +311,7 @@ class Parser(object):
         len_inter = len(bidirouts_chunk)
 
         logits_arc = utils.bilinear(dep_arc_inter, W_arc, head_arc_inter,
-                                    self._arc_dim, len_inter, config.batch_size, 1,
+                                    self._arc_dim, len_inter, len_inter, config.batch_size, 1,
                                     self.biaffine_bias_x_arc, self.biaffine_bias_y_arc)
         flat_logits_arc = dy.reshape(logits_arc, (len_inter, ), len_inter)
 
@@ -330,17 +332,6 @@ class Parser(object):
 
             cor_inter += np.sum(np.equal(preds_arc_chunk, heads_inter))
 
-            # preds_arc = logits_arc.npvalue().argmax(0)
-            # num_cor_arc = np.sum(np.equal(preds_arc[1:], heads_inter))
-            # res_arc = utils.word_dep(preds_arc[1:], preds_arc_intra, preds_chunk, chunk_heads, self._B_tag_id)
-            # if len(res_arc) != len(heads):
-            #     print('error!')
-            #     return loss_arc, num_cor_arc, num_cor_rel
-            # cor_arc_mask = np.equal(res_arc, heads)
-            # num_cor_arc = np.sum(cor_arc_mask)
-            # num_cor_arc = np.sum(np.multiply(np.equal(res_arc, heads), punct_mask))
-
-        embs_chunk = []
         tmp_chunk = []
         idx_chunk = 0
         R_arc = dy.parameter(self.R_arc)
@@ -355,6 +346,7 @@ class Parser(object):
 
         # lstm_outs_word = R_arc * dy.concatenate([lstm_outs_word, embs_chunk])
 
+
         embs_intra_dep, embs_intra_head = \
             utils.leaky_relu(dy.affine_transform([mlp_intra_dep_bias, mlp_intra_dep, lstm_outs_word])), \
             utils.leaky_relu(dy.affine_transform([mlp_intra_head_bias, mlp_intra_head, lstm_outs_word]))
@@ -364,8 +356,6 @@ class Parser(object):
             embs_intra_dep, embs_intra_head = dy.dropout(embs_intra_dep, self._pdrop), dy.dropout(embs_intra_head, self._pdrop)
         if len(bidirouts_word) > lstm_outs_word.dim()[0][1] + 2:
             print('select col out of bounds')
-
-        # embs_intra_dep, embs_intra_head = lstm_outs_word, lstm_outs_word
 
         dep_arc_word, dep_rel_word = embs_intra_dep[:self._arc_dim], embs_intra_dep[self._arc_dim:]
         head_arc_word, head_rel_word = embs_intra_head[:self._arc_dim], embs_intra_head[self._arc_dim:]
@@ -378,41 +368,33 @@ class Parser(object):
             heads_inter = preds_arc_chunk
 
         R_arc_chunk = dy.parameter(self.R_arc_chunk)
+        R_arc_chunk_dep = dy.parameter(self.R_arc_chunk_dep)
 
 
         for idx, head_intra in enumerate(heads_intra):
-            # head_intra = [h + 1 if h != 0 else 0 for h in head_intra]
-
-            mlp_intra_dep_arc =dy.parameter(self.mlp_intra_dep_arc)
-            mlp_intra_head_arc =dy.parameter(self.mlp_intra_head_arc)
-            mlp_intra_dep_arc_bias =dy.parameter(self.mlp_intra_dep_arc_bias)
-            mlp_intra_head_arc_bias =dy.parameter(self.mlp_intra_head_arc_bias)
-
             chunk_child = word_ranges[idx + 1]
             chunk_parent = word_ranges[heads_inter[idx]]
 
             col_range_child = [i + 1 for i in range(chunk_child[0], chunk_child[1])]
             col_range_parent = [i + 1 for i in range(chunk_parent[0], chunk_parent[1])]
 
-            len_chunk = chunk_child[1] - chunk_child[0] + chunk_parent[1] - chunk_parent[0] + 1
-            # len_chunk = chunk_child[1] - chunk_child[0] + chunk_parent[1] - chunk_parent[0]
+            len_chunk_dep = chunk_child[1] - chunk_child[0]
+            len_chunk_head = chunk_child[1] - chunk_child[0] + chunk_parent[1] - chunk_parent[0] + 1
 
-            # dep_arc_intra = dy.concatenate_cols([self.emb_root_intra[0], dep_arc_word])
-            # head_arc_intra = dy.concatenate_cols([self.emb_root_intra[1], head_arc_word])
-            # dep_arc_intra = dy.select_cols(dep_arc_intra, col_range_parent + col_range_child)
-            # head_arc_intra = dy.select_cols(head_arc_intra, col_range_parent + col_range_child)
-
-            # embs_intra_arc = dy.select_cols(lstm_outs_word, col_range_child + col_range_parent)
             embs_intra_arc = dy.concatenate_cols([self.emb_root_intra[0], lstm_outs_word])
             # embs_intra_arc = dy.select_cols(embs_intra_arc, [0] + col_range_child + col_range_parent)
             embs_intra_arc = [dy.select_cols(embs_intra_arc, [idx]) for idx in [0] + col_range_child + col_range_parent]
             embs_intra_arc, _, _ = utils.biLSTM(self.LSTM_Builders_word_2, embs_intra_arc, 1, self._pdrop_lstm, self._pdrop_lstm)
+            embs_intra_arc_dep = dy.concatenate_cols(embs_intra_arc[1:len(col_range_child) + 1])
             embs_intra_arc = dy.concatenate_cols(embs_intra_arc)
             chunk_embs = dy.concatenate_cols([self.emb_root_intra_chunk[0]] + [bidirouts_chunk[idx + 1]] * len(col_range_child) + [bidirouts_chunk[heads_inter[idx]]] * len(col_range_parent))
+            chunk_embs_dep = dy.concatenate_cols([bidirouts_chunk[idx + 1]] * len(col_range_child))
             embs_intra_arc = R_arc_chunk * dy.concatenate([embs_intra_arc, chunk_embs])
+            embs_intra_arc_dep = R_arc_chunk_dep * dy.concatenate([embs_intra_arc_dep, chunk_embs_dep])
+
 
             dep_arc_intra, head_arc_intra = \
-                utils.leaky_relu(dy.affine_transform([mlp_intra_dep_arc_bias, mlp_intra_dep_arc, embs_intra_arc])), \
+                utils.leaky_relu(dy.affine_transform([mlp_intra_dep_arc_bias, mlp_intra_dep_arc, embs_intra_arc_dep])), \
                 utils.leaky_relu(dy.affine_transform([mlp_intra_head_arc_bias, mlp_intra_head_arc, embs_intra_arc]))
 
             if isTrain:
@@ -420,20 +402,15 @@ class Parser(object):
                                                                                                       self._pdrop)
 
             logits_arc = utils.bilinear(dep_arc_intra, W_arc_intra, head_arc_intra,
-                                        self._arc_dim, len_chunk, config.batch_size, 1,
+                                        self._arc_dim, len_chunk_dep, len_chunk_head, config.batch_size, 1,
                                         self.biaffine_bias_x_arc, self.biaffine_bias_y_arc)
-            flat_logits_arc = dy.reshape(logits_arc, (len_chunk, ), len_chunk)
-
-            # if len(head_intra) != len(col_range_child + col_range_parent):
-            #     print('error')
-            #
-            # if len(head_intra) + 1 <= max(head_intra):
-            #     print('error')
-
+            flat_logits_arc = dy.reshape(logits_arc, (len_chunk_head, ), len_chunk_dep)
 
             if isTrain:
-                loss_arc += dy.sum_batches(dy.pickneglogsoftmax_batch(flat_logits_arc, [0] + head_intra))
-                # loss_arc += dy.sum_batches(dy.pickneglogsoftmax_batch(flat_logits_arc, head_intra))
+                # loss_arc += dy.sum_batches(dy.pickneglogsoftmax_batch(flat_logits_arc, [0] + head_intra))
+                if max(head_intra[:len(col_range_child)]) > len(col_range_parent) + len(col_range_child) + 1:
+                    print('error')
+                loss_arc += dy.sum_batches(dy.pickneglogsoftmax_batch(flat_logits_arc, head_intra[:len(col_range_child)]))
                 # preds_arc = logits_arc.npvalue().argmax(0)
                 preds_arc_child.append(head_intra[len(col_range_child):])
                 # preds_arc_parent.append([arc - len(col_range_child) + 1 for arc in head_intra[:len(col_range_child)]])
@@ -443,15 +420,13 @@ class Parser(object):
                 preds_arc_chunk = heads_inter
             else:
                 preds_arc = logits_arc.npvalue().argmax(0)
-                preds_arc = preds_arc[1:]
-                # preds_arc_intra.append(preds_arc[1 + len(col_range_child):])
-                preds_arc_child.append(preds_arc[len(col_range_child):])
-                preds_arc_parent.append(preds_arc[:len(col_range_child)])
+
+                if type(preds_arc) is not np.ndarray:
+                    preds_arc = np.array([preds_arc])
+
+                preds_arc_parent.append(preds_arc)
                 gold_arc_child.append(head_intra[len(col_range_child):])
                 gold_arc_parent.append(head_intra[:len(col_range_child)])
-                # head_mask = np.not_equal(head_intra, np.zeros(len(head_intra)))
-                # num_cor_arc_intra += np.sum(np.multiply(np.equal(preds_arc[1:], head_intra), head_mask))
-                # tot_arc_intra += np.sum(head_mask)
 
         if not isTrain:
             res_arc = utils.complete_sents(preds_arc_parent, preds_arc_child, preds_arc_chunk, preds_chunk)
@@ -478,28 +453,23 @@ class Parser(object):
         dep_rel_word = R_dep_rel * dy.concatenate([dep_rel_word, dy.concatenate_cols(embs_dep_chunk)])
         head_rel_word = R_head_rel * dy.concatenate([head_rel_word, dy.concatenate_cols(embs_head_chunk)])
 
+
         logits_rel = utils.bilinear(dep_rel_word, W_rel, head_rel_word,
-                                    self._rel_dim, seq_len, 1, self._vocab_size_r,
+                                    self._rel_dim, seq_len, seq_len, 1, self._vocab_size_r,
                                     self.biaffine_bias_x_rel, self.biaffine_bias_y_rel)
 
         flat_logits_rel = dy.reshape(logits_rel, (seq_len, self._vocab_size_r), seq_len)
+
 
         partial_rel_logits = dy.pick_batch(flat_logits_rel, [0] + heads if isTrain else [0] + res_arc)
 
         if isTrain:
             loss_rel = dy.sum_batches(dy.pickneglogsoftmax_batch(partial_rel_logits, [0] + rels))
         else:
-            if max(res_arc) > len(res_arc):
-                return loss_arc + loss_bi + loss_rel, num_cor_arc, num_cor_arc_intra, tot_arc_intra, num_cor_rel, \
-                       cor_rel, gold_rels, system_rels, cor_bi, cor_inter, len_inter - 1, num_suc
             preds_rel = partial_rel_logits.npvalue().argmax(0)
-            # num_cor_rel = np.sum(np.multiply(np.equal(preds_rel[1:], rels), cor_arc_mask))
-            num_cor_rel = np.sum(np.multiply(np.multiply(np.equal(preds_rel[1:], rels), cor_arc_mask), punct_mask))
+            num_cor_rel = np.sum(np.equal(preds_rel[1:], rels), cor_arc_mask)
             cor_rel = np.multiply(rels, np.multiply(np.equal(preds_rel[1:], rels), cor_arc_mask))
-            #gold_rels = np.multiply(rels, cor_arc_mask)
             gold_rels = rels
-            # type_cor_rel = np.multiply(rels, np.equal(preds_rel[1:], rels))
-            #system_rels = np.multiply(preds_rel[1:], cor_arc_mask)
             system_rels = preds_rel[1:]
 
         return loss_arc + loss_bi + loss_rel, num_cor_arc, num_cor_arc_intra, tot_arc_intra, num_cor_rel,\
