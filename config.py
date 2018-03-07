@@ -6,10 +6,10 @@ pdrop_lstm = 0.33
 layers = 1
 mlp_dim = 600
 arc_dim = 500
-layers_word = 1
-layers_chunk = 2
+layers_word = 2
+layers_chunk = 1
 
-all_100 = True
+all_100 = not True
 if all_100:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
     mlp_dim += 100
@@ -36,7 +36,7 @@ epsilon = 1e-12
 show_acc = 1000
 
 minimal_count = 2
-early_stop = 10
+early_stop = 30
 save_file = "parameter"
 load_file_num = 34
 load_file = str(load_file_num) + "/parameter"
@@ -66,4 +66,3 @@ initial_entries = ['UNK']
 const_init = not True
 japanese = True
 num_sents = 0
-exclude_puncts = not True

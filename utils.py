@@ -1,7 +1,7 @@
 import dynet as dy
 import numpy as np
 from tarjan import Tarjan
-import global_vars
+
 # id of B tag in BI tag sequences
 
 def ranges(bi_seq, B_tag_idx=0):
@@ -61,6 +61,77 @@ def omit_invalid_sents(word_ids, tag_ids, head_ids, rel_ids, bi_ids, B_tag_id, p
     return word_ids, tag_ids, head_ids, rel_ids, bi_ids
 
 
+
+
+
+
+def inter_intra_dep(parents_word, bi_chunk, B_tag_idx, rels, punct_idx):
+    w2ch = align_word_chunk(bi_chunk, B_tag_idx)
+    chunk_ranges = ranges(bi_chunk, B_tag_idx)
+    chunk_heads = []
+    intra_dep = []
+    parents_word = [0] + parents_word
+    rels = [0] + rels
+    par_outside = []
+
+    for r in chunk_ranges[1:]:
+        start, end = r[0], r[1]
+        # start, end = r[0], r[1]
+
+        head_found = False
+        intra_dep.append([])
+        par_outside.append([])
+        for w in range(start, end):
+
+            parent_id = parents_word[w]
+            diff = parent_id - start + 1
+            if (parent_id < start or end <= parent_id):
+                if rels[w] != punct_idx and not head_found:
+                    chunk_heads.append(w)
+                    head_found = True
+                intra_dep[-1].append(0)
+                par_outside[-1].append(parent_id)
+            else:
+                intra_dep[-1].append(diff)
+
+        if not head_found:
+            chunk_heads.append(w)
+
+
+    inter_dep = [w2ch[parents_word[ch_head]] for ch_head in chunk_heads]
+
+    ret = []
+
+    for idx, par_chunk in enumerate(inter_dep):
+        # if inter_dep[-1] != 0:
+        #     print('!')
+
+        # if par_chunk == 0:
+        #     continue
+        child = []
+        par_start, par_end = chunk_ranges[par_chunk]
+        for elem in intra_dep[idx]:
+            if elem == 0:
+                if elem > par_outside[idx][0] - par_start + len(intra_dep[idx]):
+                    child.append(0)
+                else:
+                    child.append(par_outside[idx].pop(0) - par_start + len(intra_dep[idx]))
+            else:
+                if elem > len(intra_dep[idx]) + len(intra_dep[inter_dep[idx] - 1]) + 3:
+                    print('error')
+                child.append(elem)
+        if par_chunk != 0:
+            tmp = child + [(elem + len(intra_dep[idx]) - 1) if elem != 0 else 0 for elem in intra_dep[inter_dep[idx] - 1]]
+        else:
+            tmp = child + [0]
+
+        ret.append(tmp)
+
+    # return inter_dep, intra_dep, [0] + chunk_heads
+    return inter_dep, ret, [0] + chunk_heads
+
+
+
 def re_chunk(heads, bi_chunk):
 
     bi_chunk = [0] + bi_chunk
@@ -83,15 +154,13 @@ def re_chunk(heads, bi_chunk):
                 set_heads.add(w)
                 if num_heads > 1:
                     rechunk_flag.append(1)
-                    global_vars.multi_head_chunks += 1
+
                     break
         if num_heads <= 1:
             rechunk_flag.append(0)
 
     for idx, h in enumerate(heads):
         if h not in set_heads:
-            if rechunk_flag[w2ch[h]] == 0:
-                global_vars.not_head_parents += 1
             rechunk_flag[w2ch[h]] = 1
 
 
@@ -145,43 +214,6 @@ def chunk_tags(rels, func, words, func_begin, func_end, indp, prefix, subob, pos
         r_prev = r
 
     return ret
-
-
-
-
-
-
-
-
-
-def inter_intra_dep(parents_word, bi_chunk, B_tag_idx):
-    w2ch = align_word_chunk(bi_chunk, B_tag_idx)
-    word_ranges = ranges(bi_chunk, B_tag_idx)
-    chunk_heads = []
-    intra_dep = []
-    parents_word = [0] + parents_word
-
-    for r in word_ranges[1:]:
-        start, end = r[0], r[1]
-        # start, end = r[0], r[1]
-
-        head_found = False
-        intra_dep.append([])
-        for w in range(start, end):
-
-            parent_id = parents_word[w]
-            diff = parent_id - start + 1
-            if (parent_id < start or end <= parent_id):
-                if not head_found:
-                    chunk_heads.append(w)
-                    head_found = True
-                intra_dep[-1].append(0)
-            else:
-                intra_dep[-1].append(diff)
-
-    inter_dep = [w2ch[parents_word[ch_head]] for ch_head in chunk_heads]
-
-    return inter_dep, intra_dep, [0] + chunk_heads
 
 
 def word_dep(inter_dep, intra_dep, bi_chunk, chunk_heads, B_tag_idx):
@@ -673,21 +705,6 @@ def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
     bs = [b for b in reversed(bs)]
 
     return inputs, fs, bs
-
-
-def inter_chunk_mask(heads, bi_chunk):
-    chunk_ranges = ranges(bi_chunk)
-    heads = heads
-    ret = []
-
-    for idx in range(len(heads)):
-        parent_id = heads[idx]
-        start, end = chunk_ranges[idx + 1]
-        is_outside = parent_id < start or end <= parent_id
-
-        ret.append(1 if is_outside else 0)
-
-    return ret
 
 
 def segment_embds(l2r_outs, r2l_outs, ranges, offset=0, segment_concat=False):
