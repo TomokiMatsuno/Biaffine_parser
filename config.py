@@ -5,11 +5,11 @@ pdrop_embs = 0.33
 layers = 1
 layers_pos = 1
 layers_bi = 1
-layers_dep = 1
+layers_dep = 3
 mlp_dim = 600
 arc_dim = 500
 
-all_100 = True
+all_100 = not True
 if all_100:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
     mlp_dim += 100
@@ -42,10 +42,12 @@ load_file_num = 3
 load_file = str(load_file_num) + "/parameter"
 
 isTest = False
-save = False
+orthonormal = False and not isTest
+save = True
 
 las = True
 chinese = True
 BOS_EOS = True
 root = False
+pret = False
 

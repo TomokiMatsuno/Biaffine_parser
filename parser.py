@@ -116,12 +116,12 @@ class Parser(object):
 
     def LSTM_builders(self, layers, input_dim, lstm_dim):
         LSTM_builders = []
-        f = utils.orthonormal_VanillaLSTMBuilder(1, input_dim, lstm_dim, self._pc, isTest=config.isTest)
-        b = utils.orthonormal_VanillaLSTMBuilder(1, input_dim, lstm_dim, self._pc, isTest=config.isTest)
+        f = utils.orthonormal_VanillaLSTMBuilder(1, input_dim, lstm_dim, self._pc, isTest=not config.orthonormal)
+        b = utils.orthonormal_VanillaLSTMBuilder(1, input_dim, lstm_dim, self._pc, isTest=not config.orthonormal)
         LSTM_builders.append((f, b))
         for i in range(layers - 1):
-            f = utils.orthonormal_VanillaLSTMBuilder(1, 2 * lstm_dim, lstm_dim, self._pc, isTest=config.isTest)
-            b = utils.orthonormal_VanillaLSTMBuilder(1, 2 * lstm_dim, lstm_dim, self._pc, isTest=config.isTest)
+            f = utils.orthonormal_VanillaLSTMBuilder(1, 2 * lstm_dim, lstm_dim, self._pc, isTest=not config.orthonormal)
+            b = utils.orthonormal_VanillaLSTMBuilder(1, 2 * lstm_dim, lstm_dim, self._pc, isTest=not config.orthonormal)
             LSTM_builders.append((f, b))
 
         return LSTM_builders

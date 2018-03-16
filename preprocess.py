@@ -5,11 +5,21 @@ import os
 import shutil
 import glob
 import sys
+import config
+import paths
 
 from collections import Counter
 
-import config
-import paths
+from gensim.models import KeyedVectors
+
+def load_pret_embs():
+    # path2javec = '/Users/tomoki/NLP_data/ja-vec-w2v-format.txt'
+    #word_vectors = KeyedVectors.load_word2vec_format(paths.path2javec, binary=True)
+    # path2javec = '/Users/tomoki/NLP_data/ja-word2vec/ja.tsv'
+    word_vectors = KeyedVectors.load_word2vec_format(paths.pret_file, binary=False)
+    # word_vectors = KeyedVectors.load(paths.pret_file)
+
+    return word_vectors
 
 def files2sents_ch(files):
     words = []
@@ -163,6 +173,12 @@ class Dictionary(object):
         # print
         # '#words in training set:', self._words_in_train_data
         # words_in_train_data = set(self.i2x)
+
+#        words_in_pret = load_pret_embs()
+#        for word in words_in_pret.keys():
+#            if self.cnt[word] < config.minimal_count:
+#                self.i2x.append(word)
+
         with open(self._pret_file) as f:
             for line in f.readlines():
                 line = line.strip().split()
@@ -175,17 +191,30 @@ class Dictionary(object):
 
     def get_pret_embs(self):
         assert (self._pret_file is not None), "No pretrained file provided."
-        embs = [[]] * len(self.i2x)  # make list of empty list of length of id2word
+        embs = [[]] * len(self.i2x) # make list of empty list of length of id2word
+#        pret_embs = load_pret_embs()
+#        for word, data in pret_embs.items():
+#            embs[self.x2i[word]] = data
+        lines = []
+
         with open(self._pret_file) as f:
             for line in f.readlines():
                 line = line.strip().split()
                 if line:
+                    if len(line) == 4:
+                        lines.extend(line)
+
+
+                if line:
                     word, data = line[0], line[1:]
-                    embs[self.x2i[word]] = data  #
+                    tmp = [float(d) for d in data]
+                    if len(tmp) == config.input_dim:
+                        embs[self.x2i[word]] = tmp
+                    # embs[self.x2i[word]] = [float(d) if d[0] is not '[' else float(d[1:]) for d in data]
         emb_size = len(data)
         for idx, emb in enumerate(embs):  # assign zero vector if a word is not provided with pretrained embedding
             if not emb:
-                embs[idx] = np.zeros(emb_size)
+                embs[idx] = list(np.zeros(emb_size))
         pret_embs = np.array(embs, dtype=np.float32)
         return pret_embs / np.std(
             pret_embs)  # return an array of pretrained embeddings normalized by standard deviation

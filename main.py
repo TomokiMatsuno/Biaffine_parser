@@ -61,18 +61,18 @@ else:
 #     preprocess.Dictionary(tags), \
 #     preprocess.Dictionary(rels)
 
-if config.chinese:
-    wd, td, rd = \
-        preprocess.Dictionary(words), \
-        preprocess.Dictionary(tags), \
-        preprocess.Dictionary(rels)
-    embs_word = None
-else:
+if config.pret:
     wd, td, rd = \
         preprocess.Dictionary(words, paths.pret_file), \
         preprocess.Dictionary(tags), \
         preprocess.Dictionary(rels)
     embs_word = wd.get_pret_embs()
+else:
+    wd, td, rd = \
+        preprocess.Dictionary(words), \
+        preprocess.Dictionary(tags), \
+        preprocess.Dictionary(rels)
+    embs_word = None
 
 chars, indices_char = preprocess.tochar(words, tags, indices)
 chars_dev, indices_char_dev = preprocess.tochar(words_dev, tags_dev, indices_dev)
