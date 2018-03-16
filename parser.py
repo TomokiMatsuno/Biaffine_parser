@@ -77,8 +77,8 @@ class Parser(object):
         self._pdrop = pdrop
         self._pdrop_embs = pdrop_embs
 
-        self.LSTM_builders_pos = self.LSTM_builders(config.layers_pos, input_dim, lstm_dim)
-        self.LSTM_builders_bi = self.LSTM_builders(config.layers_bi, input_dim * 2 + lstm_dim * 2, lstm_dim)
+        # self.LSTM_builders_pos = self.LSTM_builders(config.layers_pos, input_dim, lstm_dim)
+        # self.LSTM_builders_bi = self.LSTM_builders(config.layers_bi, input_dim * 2 + lstm_dim * 2, lstm_dim)
         # self.LSTM_builders_dep = self.LSTM_builders(config.layers_dep, lstm_dim * 2, lstm_dim)
         self.LSTM_builders_dep = self.LSTM_builders(config.layers_dep, input_dim, lstm_dim)
 
@@ -384,8 +384,8 @@ class Parser(object):
         num_cor_rel = 0
 
         embs_c = [self.lp_c[c] for c in chars]
-        if self._pdrop_embs != .0:
-            embs_c = [dy.dropout(c, self._pdrop_embs) for c in embs_c]
+        # if self._pdrop_embs != .0:
+        #     embs_c = [dy.dropout(c, self._pdrop_embs) for c in embs_c]
 
         # bidir_pos, l2rs_pos, r2ls_pos = utils.biLSTM(self.LSTM_builders_pos, embs_c, 1, self._pdrop, self._pdrop)
         #
