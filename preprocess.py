@@ -113,7 +113,7 @@ class Dictionary(object):
         self.cnt = Counter(seq)
         self.words_in_train = set()
         self.i2x = ['UNK', 'BOS', 'EOS', 'JNT']
-        self.add_entries()
+        self.add_entries(seq)
 
         if pret_file:
             self._pret_file = pret_file
@@ -126,17 +126,14 @@ class Dictionary(object):
 
     def add_entries(self, seq=None):
         if not self.freezed:
-            for elem in self.cnt:
+            for elem in seq:
                 if self.cnt[elem] >= config.minimal_count:
                     self.i2x.append(elem)
             self.words_in_train = set(self.i2x)
         else:
-            unk_count = 0
             for ent in seq:
                 if ent not in self.x2i:
                     self.x2i[ent] = self.x2i['UNK']
-                    unk_count += 1
-            ahaha = 0
 
     def add_entry(self, elem):
         if elem not in self.x2i:
