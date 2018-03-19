@@ -211,7 +211,6 @@ def train_dev(char_ids, tag_ids_char, word_ids, tag_ids, bis_word, head_ids, rel
         if not isTrain:
             dy.renew_cg()
 
-        # loss, num_cor_arc, num_cor_arc_align, num_cor_rel = parser.run(seq_c, seq_t_char, seq_w, seq_t, bi_word, seq_h, seq_r, masks_w, masks_t, isTrain)
         loss, num_cor_arc, num_cor_rel = parser.run(seq_c, seq_t_char, seq_w, seq_t, bi_word, seq_h, seq_r, masks_w, masks_t, isTrain)
 
         if isTrain:
@@ -224,7 +223,8 @@ def train_dev(char_ids, tag_ids_char, word_ids, tag_ids, bis_word, head_ids, rel
         #         punct_count += 1
         #
         # tot_tokens += len(seq_w) - punct_count
-        tot_tokens += len(seq_c)
+        # tot_tokens += len(seq_c)
+        tot_tokens += len(seq_w)
         tot_cor_arc += num_cor_arc
         # tot_cor_arc_align += num_cor_arc_align
         tot_cor_rel += num_cor_rel

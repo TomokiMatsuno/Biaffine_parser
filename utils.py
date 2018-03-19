@@ -190,5 +190,30 @@ def uniLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.,
     return inputs
 
 
+def get_seg_tuples(seg_matrix):
+    ret = []
+    preds_seg = np.where(seg_matrix >= 0.5)
+    start = 0
+    psidx = 1
+    max_row = 0
+    max_col = 0
 
+    while psidx < len(preds_seg[0]):
+        val_row = preds_seg[0][psidx]
+        val_col = preds_seg[1][psidx]
+
+        if val_row > max_row and val_col > max_col:
+            ret.append((start, val_row))
+            start = val_row
+
+        if max_row < val_row:
+            max_row = val_row
+        if max_col < val_col:
+            max_col = val_col
+
+        psidx += 1
+
+    ret.append((start, max_row + 1))
+
+    return ret
 

@@ -127,7 +127,7 @@ class Dictionary(object):
     def add_entries(self, seq=None):
         if not self.freezed:
             for elem in seq:
-                if self.cnt[elem] >= config.minimal_count:
+                if self.cnt[elem] >= config.minimal_count and elem not in self.i2x:
                     self.i2x.append(elem)
             self.words_in_train = set(self.i2x)
         else:
@@ -192,16 +192,10 @@ class Dictionary(object):
 #        pret_embs = load_pret_embs()
 #        for word, data in pret_embs.items():
 #            embs[self.x2i[word]] = data
-        lines = []
 
         with open(self._pret_file) as f:
             for line in f.readlines():
                 line = line.strip().split()
-                if line:
-                    if len(line) == 4:
-                        lines.extend(line)
-
-
                 if line:
                     word, data = line[0], line[1:]
                     tmp = [float(d) for d in data]
@@ -274,6 +268,7 @@ def align_deps(heads, bi_word):
             widx += 1
             cidx = idx
         else:
+            # heads_char.append(cidx)
             heads_char.append(cidx + 1)
 
     return heads_char

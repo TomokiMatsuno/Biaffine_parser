@@ -63,11 +63,10 @@ class Parser(object):
             self._trainer = dy.AdadeltaTrainer(self._pc)
 
         self.params = dict()
-        if embs_word is None:
+        if config.pret:
             # self.lp_w = self._pc.add_lookup_parameters((word_size, input_dim), init=dy.ConstInitializer(0.))
-            self.lp_w = self._pc.add_lookup_parameters((word_size, input_dim))
-        else:
-            self.lp_w = self._pc.lookup_parameters_from_numpy(embs_word)
+            self.pret_embs = self._pc.lookup_parameters_from_numpy(embs_word)
+        self.lp_w = self._pc.add_lookup_parameters((word_size, input_dim))
         # self.lp_t = self._pc.add_lookup_parameters((tag_size, input_dim), init=dy.ConstInitializer(0.))
         # self.emb_root = self._pc.add_lookup_parameters((2, input_dim), init=dy.ConstInitializer(0.))
         self.lp_c = self._pc.add_lookup_parameters((char_size, input_dim))
@@ -109,7 +108,7 @@ class Parser(object):
         self._W_bi = self._pc.add_parameters((2, lstm_dim * 2))
         self._bias_bi = self._pc.add_parameters((2))
 
-        self.W_seg = self._pc.add_parameters((self._arc_dim + 1, self._arc_dim + 1))
+        self.W_seg = self._pc.add_parameters((self._arc_dim * 2 + 1, self._arc_dim * 2 + 1))
         self.W_tag = self._pc.add_parameters((self._rel_dim + 1, self._rel_dim + 1))
 
         return
@@ -233,7 +232,7 @@ class Parser(object):
 
         return loss, preds_seg
 
-    def seg(self, embs, bi_word):
+    def seg(self, embs_left, embs_right, bi_word):
         W_seg = dy.parameter(self.W_seg)
         loss = dy.scalarInput(0)
         preds_seg = []
@@ -244,37 +243,57 @@ class Parser(object):
         word_head = 0
         cor_seg = 0
 
+        seq_len = len(bi_word)
+
         for idx, bi in enumerate(bi_word):
             if bi == 0:
                 if idx > 0:
                     gold_seg_tuple.append((word_head, idx))
                 word_head = idx
             gold.append(word_head)
-        logit_seg = utils.bilinear(embs, W_seg, embs, self._arc_dim, len(embs), 1, 1, True, True)
+        gold_seg_tuple.append((word_head, idx + 1))
+
+        gold_matrix = []
+        for tpl in gold_seg_tuple:
+            for i in range(tpl[1] - tpl[0]):
+                # gold_matrix.append(
+                #     np.concatenate((np.ones(tpl[0]), np.zeros(tpl[1] - tpl[0]), np.ones(seq_len - tpl[1]))))
+                gold_matrix.append(
+                    np.concatenate((np.zeros(tpl[0]), np.ones(tpl[1] - tpl[0]), np.zeros(seq_len - tpl[1]))))
+        gold_matrix = np.reshape(gold_matrix, (seq_len, seq_len))
+
+
+        logits_seg = utils.bilinear(embs_left, W_seg, embs_right, self._arc_dim, seq_len, 1, 1, True, True)
         if self.isTrain:
-            loss = dy.pickneglogsoftmax_batch(logit_seg, gold)
+            loss = dy.sum_elems(dy.squared_distance(dy.inputTensor(gold_matrix), dy.logistic(logits_seg)))
+            # flat_logits_seg = dy.reshape(logits_seg, (seq_len,), seq_len)
+            # loss = dy.pickneglogsoftmax_batch(flat_logits_seg, gold)
         else:
-            for idx, bi in enumerate(bi_word):
-                if bi == 0:
-                    if idx > 0:
-                        gold_seg_tuple.append((word_head, idx))
-                    word_head = idx
-                gold.append(word_head)
+            # for idx, bi in enumerate(bi_word):
+            #     if bi == 0:
+            #         if idx > 0:
+            #             gold_seg_tuple.append((word_head, idx))
+            #         word_head = idx
+            #     gold.append(word_head)
 
-            preds_seg = logit_seg.npvalue().argmax(0)
-            cur_head = 0
+            # preds_seg = logits_seg.npvalue().argmax(0)
+            logits_seg_value = (dy.logistic(logits_seg)).npvalue()
 
-            for idx, head in enumerate(preds_seg):
-                if cur_head != head:
-                    if idx > 0:
-                        preds_seg_tuple.append((cur_head, idx - 1))
-                    cur_head = head
-
-            for gold, pred in zip(gold_seg_tuple, preds_seg_tuple):
-                if gold[0] == pred[0] and gold[1] == pred[1]:
+            preds_seg_tuple = utils.get_seg_tuples(logits_seg_value)
+            #
+            # cur_head = 0
+            #
+            # for idx, head in enumerate(preds_seg):
+            #     if idx == head:
+            #         if idx > 0:
+            #             preds_seg_tuple.append((cur_head, idx))
+            #         cur_head = head
+            # preds_seg_tuple.append((cur_head, idx + 1))
+            for pred in preds_seg_tuple:
+                if pred in gold_seg_tuple:
                     cor_seg += 1
 
-        return loss, cor_seg
+        return loss, preds_seg_tuple, cor_seg
 
     def pred_pos_char(self, tags, embs, isTrain):
         W = dy.parameter(self._W_pos_char)
@@ -383,7 +402,11 @@ class Parser(object):
         num_cor_arc_align = 0
         num_cor_rel = 0
 
-        embs_c = [self.lp_c[c] for c in chars]
+        if config.pret:
+            embs_c = [self.lp_c[c] + self.lp_w[c] for c in chars]
+        else:
+            embs_c = [self.lp_c[c] for c in chars]
+
         # if self._pdrop_embs != .0:
         #     embs_c = [dy.dropout(c, self._pdrop_embs) for c in embs_c]
 
@@ -420,7 +443,8 @@ class Parser(object):
         lstm_ins_dep = embs_c
         bidir_dep, l2rs_dep, r2ls_dep = utils.biLSTM(self.LSTM_builders_dep, lstm_ins_dep, 1, self._pdrop, self._pdrop)
 
-        bidir_dep = [self.emb_root[0]] + bidir_dep
+        # bidir_dep = [self.emb_root[0]] + bidir_dep
+
         seq_len = len(bidir_dep)
         bidir_dep = dy.concatenate_cols(bidir_dep)
 
@@ -430,6 +454,10 @@ class Parser(object):
 
         if isTrain:
             embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
+
+        loss_seg, preds_seg, cor_seg = self.seg(embs_dep, embs_head, bi_word)
+
+        return loss_seg, cor_seg, 0
 
         # dep_arc, dep_rel = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
         # head_arc, head_rel = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
@@ -454,7 +482,7 @@ class Parser(object):
         #
         # if not config.las:
         #     return loss, num_cor_arc, num_cor_rel
-            # return loss, num_cor_arc_align, num_cor_rel
+        # return loss, num_cor_arc_align, num_cor_rel
 
         logits_rel = utils.bilinear(embs_dep, W_rel, embs_head,
                                     self._rel_dim, seq_len, 1, self._vocab_size_r,
