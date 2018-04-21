@@ -5,97 +5,20 @@ import os
 import shutil
 import glob
 import sys
-import config
-import paths
 
 from collections import Counter
 
-from gensim.models import KeyedVectors
+import config
+import paths
 
-def load_pret_embs():
-    # path2javec = '/Users/tomoki/NLP_data/ja-vec-w2v-format.txt'
-    #word_vectors = KeyedVectors.load_word2vec_format(paths.path2javec, binary=True)
-    # path2javec = '/Users/tomoki/NLP_data/ja-word2vec/ja.tsv'
-    word_vectors = KeyedVectors.load_word2vec_format(paths.pret_file, binary=False)
-    # word_vectors = KeyedVectors.load(paths.pret_file)
-
-    return word_vectors
-
-def files2sents_ch(files):
-    words = []
-    poses = []
-    heads = []
-    rels = []
-    indices = []
-
-    for file in files:
-        tmp_indices = []
-        widx = 1
-        data = pd.read_csv(file, engine='python', encoding='GB2312', delimiter='\t', header=None,
-                           skip_blank_lines=False)
-        for idx in range(data.shape[0]):
-            if data.iloc[idx, 1] is not None:
-                tmp_indices.append(widx)
-                widx += 1
-            else:
-                widx = 1
-        data_out = pd.read_csv(file, engine='python', encoding='GB2312', delimiter='\t', header=None,
-                           skip_blank_lines=True)
-        # data_out['indices'] = tmp_indices
-        indices.extend(tmp_indices)
-        words.extend(data_out[0])
-        poses.extend(data_out[1])
-        heads.extend(data_out[2])
-        rels.extend(data_out[3])
-
-        if len(tmp_indices) != len(data_out[0]):
-            # print(data_out)
-            print('mismatch!')
-
-
-    return indices, words, poses, heads, rels
-
-
-def seq2ids(seq, indices, bi=False):
+def seq2ids(seq, indices):
     ret = []
     for elem, idx in zip(seq, indices):
         if idx == 1:
             ret.append([])
-            BI = 'B_'
-        if bi:
-            ret[-1].append(BI + elem)
-        else:
-            ret[-1].append(elem)
-        BI = 'I_'
+        ret[-1].append(elem)
 
     return ret
-
-def tochar(seq_word, seq_tag, indices_word, isTag=False):
-    seq_char = []
-    indices_char = []
-
-    idx_char = 1
-    idx_tag = 1
-    for word, tag, idx_word in zip(seq_word, seq_tag, indices_word):
-        if idx_word == 1:
-            # if len(seq_char) > 0:
-            #     seq_char[-1].append(2)  #index of EOS
-            seq_char.append([])
-            # seq_char[-1].append(1)      #index of BOS
-            idx_char = 1
-            idx_tag = 1
-        if not isTag:
-            for c in word:
-                seq_char[-1].append(c)
-                indices_char.append(idx_char)
-                idx_char += 1
-        else:
-            # seq_char[-1].extend([tag] * len(word))
-            seq_char[-1].extend([tag] + ['JNT'] * (len(word) - 1))
-            indices_char.extend([i for i in range(idx_tag, idx_tag + len(word))])
-            idx_tag += len(word)
-
-    return seq_char, indices_char
 
 
 def files2DataFrame(files, delim):
@@ -112,7 +35,7 @@ class Dictionary(object):
         self.freezed = False
         self.cnt = Counter(seq)
         self.words_in_train = set()
-        self.i2x = ['UNK', 'BOS', 'EOS', 'JNT']
+        self.i2x = ['UNK']
         self.add_entries(seq)
 
         if pret_file:
@@ -131,9 +54,12 @@ class Dictionary(object):
                     self.i2x.append(elem)
             self.words_in_train = set(self.i2x)
         else:
+            unk_count = 0
             for ent in seq:
                 if ent not in self.x2i:
                     self.x2i[ent] = self.x2i['UNK']
+                    unk_count += 1
+            ahaha = 0
 
     def add_entry(self, elem):
         if elem not in self.x2i:
@@ -143,23 +69,12 @@ class Dictionary(object):
             else:
                 self.x2i[elem] = self.x2i['UNK']
 
-    def sent2ids(self, seq, indices, BOS_EOS=False):
+    def sent2ids(self, seq, indices):
         ret = []
         for elem, idx in zip(seq, indices):
             if idx == 1:
-                if BOS_EOS and len(ret) > 0:
-                    ret[-1].append(self.x2i['EOS'])
                 ret.append([])
-                if BOS_EOS:
-                    ret[-1].append(self.x2i['BOS'])
-            if type(elem) is list:
-                for c in elem:
-                    ret[-1].append(self.x2i[c] if c in self.x2i else self.x2i['UNK'])
-            else:
-                ret[-1].append(self.x2i[elem] if elem in self.x2i else self.x2i['UNK'])
-
-        if BOS_EOS:
-            ret[-1].append(self.x2i['EOS'])
+            ret[-1].append(self.x2i[elem] if elem in self.x2i else self.x2i['UNK'])
 
         return ret
 
@@ -170,12 +85,6 @@ class Dictionary(object):
         # print
         # '#words in training set:', self._words_in_train_data
         # words_in_train_data = set(self.i2x)
-
-#        words_in_pret = load_pret_embs()
-#        for word in words_in_pret.keys():
-#            if self.cnt[word] < config.minimal_count:
-#                self.i2x.append(word)
-
         with open(self._pret_file) as f:
             for line in f.readlines():
                 line = line.strip().split()
@@ -188,24 +97,17 @@ class Dictionary(object):
 
     def get_pret_embs(self):
         assert (self._pret_file is not None), "No pretrained file provided."
-        embs = [[]] * len(self.i2x) # make list of empty list of length of id2word
-#        pret_embs = load_pret_embs()
-#        for word, data in pret_embs.items():
-#            embs[self.x2i[word]] = data
-
+        embs = [[]] * len(self.i2x)  # make list of empty list of length of id2word
         with open(self._pret_file) as f:
             for line in f.readlines():
                 line = line.strip().split()
                 if line:
                     word, data = line[0], line[1:]
-                    tmp = [float(d) for d in data]
-                    if len(tmp) == config.input_dim:
-                        embs[self.x2i[word]] = tmp
-                    # embs[self.x2i[word]] = [float(d) if d[0] is not '[' else float(d[1:]) for d in data]
+                    embs[self.x2i[word]] = data  #
         emb_size = len(data)
         for idx, emb in enumerate(embs):  # assign zero vector if a word is not provided with pretrained embedding
             if not emb:
-                embs[idx] = list(np.zeros(emb_size))
+                embs[idx] = np.zeros(emb_size)
         pret_embs = np.array(embs, dtype=np.float32)
         return pret_embs / np.std(
             pret_embs)  # return an array of pretrained embeddings normalized by standard deviation
@@ -229,46 +131,8 @@ def save_codes(directory):
     for pycode in python_codes:
         shutil.copy2(pycode, directory)
 
-
 def out2file():
     orig_out = sys.stdout
     filename = 'dev_result.txt' if not config.isTest else 'test_result.txt'
     f = open(filename, 'w')
     sys.stdout = f
-
-
-def align_word_char(bi_word):
-    c2w, w2c = [0], [0]
-    widx = 1
-    for idx in range(len(bi_word)):
-        if bi_word[idx] == 0:
-            cidx = idx + 1
-            w2c.append(cidx)
-            if idx != 0:
-                widx += 1
-        c2w.append(widx)
-
-    return c2w, w2c
-
-
-def align_deps(heads, bi_word):
-    tmp = []
-    heads_char = []
-
-    c2w, w2c = align_word_char(bi_word)
-
-    for h in heads:
-        tmp.append(w2c[h])
-
-    widx = 0
-
-    for idx in range(len(bi_word)):
-        if bi_word[idx] == 0:
-            heads_char.append(tmp[widx])
-            widx += 1
-            cidx = idx
-        else:
-            # heads_char.append(cidx)
-            heads_char.append(cidx + 1)
-
-    return heads_char

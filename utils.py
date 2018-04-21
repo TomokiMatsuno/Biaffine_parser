@@ -58,18 +58,48 @@ def bilinear(x, W, y, input_size, seq_len, batch_size, num_outputs = 1, bias_x =
     return blin
 
 
+def biED(x, V_r, V_i, y, seq_len, num_outputs, bias_x=None, bias_y=None):
+
+    W_r = dy.concatenate_cols([V_r] * seq_len)
+    W_i = dy.concatenate_cols([V_i] * seq_len)
+
+    input_size = x.dim()[0][0]
+
+    x_r, x_i = x[:- input_size // 2], x[input_size // 2:]
+    y_r, y_i = y[:- input_size // 2], y[input_size // 2:]
+
+    B = dy.inputTensor(np.zeros((seq_len * num_outputs, seq_len), dtype=np.float32))
+
+    if bias_x:
+        bias = dy.reshape(dy.concatenate_cols([bias_x] * seq_len), (seq_len * num_outputs, input_size // 2))
+        B += bias * (x_r + x_i)
+    if bias_y:
+        bias = dy.reshape(dy.concatenate_cols([bias_y] * seq_len), (seq_len * num_outputs, input_size // 2))
+        B += bias * (y_r + y_i)
+
+    y_r = dy.concatenate([y_r] * num_outputs)
+    y_i = dy.concatenate([y_i] * num_outputs)
+
+    X = dy.concatenate([x_r, x_i, x_r, -x_i])
+    Y = dy.concatenate([y_r, y_i, y_i, -y_r])
+    W = dy.concatenate([W_r, W_r, W_i, -W_i])
+    WY = dy.reshape(dy.cmult(W, Y), (input_size // 2 * 4, seq_len * num_outputs))
+    blin = dy.transpose(X) * WY + dy.reshape(B, (seq_len, seq_len * num_outputs))
+
+    if num_outputs > 1:
+        blin = dy.reshape(blin, (seq_len, num_outputs, seq_len))
+
+    return blin
+
+
 def leaky_relu(x):
     return dy.bmax(.1 * x, x)
 
 
-def orthonormal_VanillaLSTMBuilder(lstm_layers, input_dims, lstm_hiddens, pc, ln=False, isTest=False):
-    builder = dy.VanillaLSTMBuilder(lstm_layers, input_dims, lstm_hiddens, pc, ln)
-
-    if isTest:
-        return builder
-
+def orthonormal_VanillaLSTMBuilder(lstm_layers, input_dims, lstm_hiddens, pc):
+    builder = dy.VanillaLSTMBuilder(lstm_layers, input_dims, lstm_hiddens, pc)
     for layer, params in enumerate(builder.get_parameters()):
-        W = orthonormal_initializer(lstm_hiddens, lstm_hiddens + (lstm_hiddens if layer > 0 else input_dims)) #the first layer takes prev hidden and input vec
+        W = orthonormal_initializer(lstm_hiddens, lstm_hiddens + (lstm_hiddens if layer >0 else input_dims)) #the first layer takes prev hidden and input vec
         W_h, W_x = W[:,:lstm_hiddens], W[:,lstm_hiddens:]
         params[0].set_value(np.concatenate([W_x]*4, 0))
         params[1].set_value(np.concatenate([W_h]*4, 0))
@@ -111,109 +141,12 @@ def orthonormal_initializer(output_size, input_size):
 
 def biLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0.):
     for fb, bb in builders:
+        f, b = fb.initial_state(), bb.initial_state()
         fb.set_dropouts(dropout_x, dropout_h)
         bb.set_dropouts(dropout_x, dropout_h)
-        f, b = fb.initial_state(), bb.initial_state()
         if batch_size is not None:
             fb.set_dropout_masks(batch_size)
             bb.set_dropout_masks(batch_size)
         fs, bs = f.transduce(inputs), b.transduce(reversed(inputs))
         inputs = [dy.concatenate([f,b]) for f, b in zip(fs, reversed(bs))]
-    return inputs, fs, bs
-
-
-def segment_embds(l2r_outs, r2l_outs, ranges, offset=0, segment_concat=False):
-    ret = []
-    l2rs = []
-    r2ls = []
-    if offset == 0:
-        st = 0
-        en = len(ranges)
-    elif offset == -1:
-        st = 0
-        en = len(ranges)
-        offset = 0
-    else:
-        st = offset
-        en = -offset
-
-    for r in ranges[st:en]:
-        start = r[0] - offset
-        end = r[1] - offset
-
-        if segment_concat:
-            l2r = dy.concatenate([l2r_outs[end - 1], l2r_outs[start]])
-            r2l = dy.concatenate([r2l_outs[start], r2l_outs[end - 1]])
-        else:
-            l2r = l2r_outs[end] - l2r_outs[start]
-            r2l = r2l_outs[start + 1] - r2l_outs[end + 1]
-
-        ret.append(dy.concatenate([l2r, r2l]))
-        l2rs.append(l2r)
-        r2ls.append(r2l)
-
-    return ret, l2rs, r2ls
-
-
-def residual_connection(new, olds, rate):
-    ret = new
-
-    for old in olds:
-        ret = [r + o * rate for r, o in zip(ret, old)]
-
-    return ret
-
-
-def ranges(bi_seq):
-    ret = []
-    start = 0
-
-    for i in range(1, len(bi_seq)):
-        if bi_seq[i] == 0:
-            end = i
-            ret.append((start, end))
-            start = i
-
-    ret.append((start, len(bi_seq)))
-
-    return ret
-
-
-def uniLSTM(builders, inputs, batch_size = None, dropout_x = 0., dropout_h = 0., rev=False):
-    for b in builders:
-        b.set_dropouts(dropout_x, dropout_h)
-        s_0 = b.initial_state()
-        if batch_size is not None:
-            b.set_dropout_masks(batch_size)
-        s = s_0.transduce(inputs if not rev else reversed(inputs))
-        inputs = s if not rev else reversed(s)
     return inputs
-
-
-def get_seg_tuples(seg_matrix):
-    ret = []
-    preds_seg = np.where(seg_matrix >= 0.5)
-    start = 0
-    psidx = 1
-    max_row = 0
-    max_col = 0
-
-    while psidx < len(preds_seg[0]):
-        val_row = preds_seg[0][psidx]
-        val_col = preds_seg[1][psidx]
-
-        if val_row > max_row and val_col > max_col:
-            ret.append((start, val_row))
-            start = val_row
-
-        if max_row < val_row:
-            max_row = val_row
-        if max_col < val_col:
-            max_col = val_col
-
-        psidx += 1
-
-    ret.append((start, max_row + 1))
-
-    return ret
-
