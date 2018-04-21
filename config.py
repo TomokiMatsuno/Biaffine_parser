@@ -5,11 +5,14 @@ pdrop_embs = 0.33
 layers = 3
 mlp_dim = 600
 arc_dim = 500
+orthonormal = False
+pret_embs = False
 
-all_100 = not True
-if all_100:
+small_model = True
+if small_model:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
     mlp_dim += 100
+    layers = 1
 
 
 biaffine_bias_x_arc = True
@@ -37,10 +40,11 @@ save_file = "parameter"
 load_file_num = 14
 load_file = str(load_file_num) + "/parameter"
 
-isTest = not False
+isTest = False
 if isTest:
     pdrop = 0.0
     pdrop_embs = 0.0
 
 las = True
+biaffine = False
 

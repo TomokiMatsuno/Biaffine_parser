@@ -105,31 +105,33 @@ class Parser(object):
         # self.dropout_lstm_hidden = dropout_lstm_hidden
 
         # mlp_size = mlp_arc_size + mlp_rel_size
-#         W = utils.orthonormal_initializer(mlp_dim, 2 * hidden_dim)
-#        self.mlp_dep = self._pc.parameters_from_numpy(W)
-#        self.mlp_head = self._pc.parameters_from_numpy(W)
-#        self.mlp_dep_bias = self._pc.add_parameters((mlp_dim,), init=dy.ConstInitializer(0.))
-#        self.mlp_head_bias = self._pc.add_parameters((mlp_dim,), init=dy.ConstInitializer(0.))
-        W = utils.orthonormal_initializer(mlp_dim * 2, 2 * hidden_dim)
-        self.mlp = self._pc.parameters_from_numpy(W)
-        self.mlp_bias = self._pc.add_parameters((mlp_dim * 2,), init=dy.ConstInitializer(0.))
+        if config.biaffine:
+            W = utils.orthonormal_initializer(mlp_dim, 2 * hidden_dim)
+            self.mlp_dep = self._pc.parameters_from_numpy(W)
+            self.mlp_head = self._pc.parameters_from_numpy(W)
+            self.mlp_dep_bias = self._pc.add_parameters((mlp_dim,), init=dy.ConstInitializer(0.))
+            self.mlp_head_bias = self._pc.add_parameters((mlp_dim,), init=dy.ConstInitializer(0.))
+        else:
+            W = utils.orthonormal_initializer(mlp_dim * 2, 2 * hidden_dim)
+            self.mlp = self._pc.parameters_from_numpy(W)
+            self.mlp_bias = self._pc.add_parameters((mlp_dim * 2,), init=dy.ConstInitializer(0.))
 
         # self.mlp_arc_size = mlp_arc_size
         # self.mlp_rel_size = mlp_rel_size
         # self.dropout_mlp = dropout_mlp
-
-        self.W_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim + 1),
-                                             init=dy.ConstInitializer(0.))
-        self.W_rel = self._pc.add_parameters((self._vocab_size_r * (self._rel_dim + 1), self._rel_dim + 1),
-                                             init=dy.ConstInitializer(0.))
-
-        self.V_r_arc = self._pc.add_parameters((self._arc_dim // 2))
-        self.V_i_arc = self._pc.add_parameters((self._arc_dim // 2))
-        self.bias_arc = self._pc.add_parameters((self._arc_dim // 2))
-        self.V_r_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r // 2))
-        self.V_i_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r // 2))
-        self.bias_x_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r // 2))
-        self.bias_y_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r // 2))
+        if config.biaffine:
+            self.W_arc = self._pc.add_parameters((self._arc_dim, self._arc_dim + 1),
+                                                 init=dy.ConstInitializer(0.))
+            self.W_rel = self._pc.add_parameters((self._vocab_size_r * (self._rel_dim + 1), self._rel_dim + 1),
+                                                 init=dy.ConstInitializer(0.))
+        else:
+            self.V_r_arc = self._pc.add_parameters((self._arc_dim))
+            self.V_i_arc = self._pc.add_parameters((self._arc_dim))
+            self.bias_arc = self._pc.add_parameters((self._arc_dim))
+            self.V_r_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r))
+            self.V_i_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r))
+            self.bias_x_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r))
+            self.bias_y_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r))
 
         return
 
@@ -148,15 +150,13 @@ class Parser(object):
         self._trainer.update()
 
     def run(self, words, tags, heads, rels, masks_w, masks_t, isTrain):
-        mlp_dep_bias = dy.parameter(self.mlp_dep_bias)
-        mlp_dep = dy.parameter(self.mlp_dep)
-        mlp_head_bias = dy.parameter(self.mlp_head_bias)
-        mlp_head = dy.parameter(self.mlp_head)
-
-        
-
-        W_arc = dy.parameter(self.W_arc)
-        W_rel = dy.parameter(self.W_rel)
+        if config.biaffine:
+            mlp_dep_bias = dy.parameter(self.mlp_dep_bias)
+            mlp_dep = dy.parameter(self.mlp_dep)
+            mlp_head_bias = dy.parameter(self.mlp_head_bias)
+            mlp_head = dy.parameter(self.mlp_head)
+            W_arc = dy.parameter(self.W_arc)
+            W_rel = dy.parameter(self.W_rel)
 
 
         #tokens in the sentence and root
@@ -197,25 +197,36 @@ class Parser(object):
         if isTrain:
             lstm_outs = dy.dropout(lstm_outs, self._pdrop)
 
-        embs_dep, embs_head = \
-            utils.leaky_relu(dy.affine_transform([mlp_dep_bias, mlp_dep, lstm_outs])), \
-            utils.leaky_relu(dy.affine_transform([mlp_head_bias, mlp_head, lstm_outs]))
+        if config.biaffine:
+            embs_dep, embs_head = \
+                utils.leaky_relu(dy.affine_transform([mlp_dep_bias, mlp_dep, lstm_outs])), \
+                utils.leaky_relu(dy.affine_transform([mlp_head_bias, mlp_head, lstm_outs]))
 
-        if isTrain:
-            embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
+            if isTrain:
+                embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
 
-        dep_arc, dep_rel = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
-        head_arc, head_rel = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
+            dep_arc, dep_rel = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
+            head_arc, head_rel = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
 
-        # logits_arc = utils.bilinear(dep_arc, W_arc, head_arc,
-        #                            self._arc_dim, seq_len, config.batch_size, 1,
-        #                            self.biaffine_bias_x_arc, self.biaffine_bias_y_arc)
+            logits_arc = utils.bilinear(dep_arc, W_arc, head_arc,
+                                       self._arc_dim, seq_len, config.batch_size, 1,
+                                       self.biaffine_bias_x_arc, self.biaffine_bias_y_arc)
+        else:
+            mlp = dy.parameter(self.mlp)
+            mlp_bias = dy.parameter(self.mlp_bias)
 
-        R_bunsetsu_biaffine = dy.parameter(self.V_r_arc)
-        I_bunsetsu_biaffine = dy.parameter(self.V_i_arc)
-        bias_arc = dy.parameter(self.bias_arc)
+            embs = \
+                utils.leaky_relu(dy.affine_transform([mlp_bias, mlp, lstm_outs]))
+            if isTrain:
+                embs = dy.dropout(embs, self._pdrop)
 
-        logits_arc = utils.biED(dep_arc, R_bunsetsu_biaffine, I_bunsetsu_biaffine, dep_arc, seq_len, 1, bias_x=bias_arc)
+            embs_arc, embs_rel = embs[:self._arc_dim * 2], embs[self._arc_dim * 2:]
+
+            W_r_arc = dy.parameter(self.V_r_arc)
+            W_i_arc = dy.parameter(self.V_i_arc)
+            bias_arc = dy.parameter(self.bias_arc)
+
+            logits_arc = utils.biED(embs_arc, W_r_arc, W_i_arc, embs_arc, seq_len, 1, bias_x=bias_arc, bias_y=bias_arc)
 
         flat_logits_arc = dy.reshape(logits_arc, (seq_len, ), seq_len)
 
@@ -228,15 +239,17 @@ class Parser(object):
         if not config.las:
             return loss_arc, num_cor_arc, num_cor_rel
 
-#        logits_rel = utils.bilinear(dep_rel, W_rel, head_rel,
-#                                    self._rel_dim, seq_len, 1, self._vocab_size_r,
-#                                    self.biaffine_bias_x_rel, self.biaffine_bias_y_rel)
-        V_r_rel = dy.parameter(self.V_r_rel)
-        V_i_rel = dy.parameter(self.V_i_rel)
-        bias_x_rel = dy.parameter(self.bias_x_rel)
-        bias_y_rel = dy.parameter(self.bias_y_rel)
+        if config.biaffine:
+            logits_rel = utils.bilinear(dep_rel, W_rel, head_rel,
+                                       self._rel_dim, seq_len, 1, self._vocab_size_r,
+                                       self.biaffine_bias_x_rel, self.biaffine_bias_y_rel)
+        else:
+            V_r_rel = dy.parameter(self.V_r_rel)
+            V_i_rel = dy.parameter(self.V_i_rel)
+            bias_x_rel = dy.parameter(self.bias_x_rel)
+            # bias_y_rel = dy.parameter(self.bias_y_rel)
 
-        logits_rel = utils.biED(dep_rel, V_r_rel, V_i_rel, dep_rel, seq_len, self._vocab_size_r, bias_x=bias_x_rel, bias_y=bias_y_rel)
+            logits_rel = utils.biED(embs_rel, V_r_rel, V_i_rel, embs_rel, seq_len, self._vocab_size_r, bias_x=bias_x_rel, bias_y=bias_x_rel)
 
         flat_logits_rel = dy.reshape(logits_rel, (seq_len, self._vocab_size_r), seq_len)
 

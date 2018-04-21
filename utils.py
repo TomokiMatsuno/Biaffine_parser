@@ -1,6 +1,6 @@
 import dynet as dy
 import numpy as np
-
+import config
 
 def bilstm(l2rlstm, r2llstm, inputs, pdrop):
     s_l2r_0 = l2rlstm.initial_state()
@@ -118,7 +118,7 @@ def orthonormal_initializer(output_size, input_size):
     lr = .1
     eps = .05/(output_size + input_size)
     success = False
-    tries = 0
+    tries = 0 if config.orthonormal else 10
     while not success and tries < 10:
         Q = np.random.randn(input_size, output_size) / np.sqrt(output_size)
         for i in range(100):

@@ -46,11 +46,12 @@ indices_dev, words_dev, tags_dev, heads_dev, rels_dev = \
 
 
 wd, td, rd = \
-    preprocess.Dictionary(words, paths.pret_file), \
+    preprocess.Dictionary(words, paths.pret_file if config.pret_embs else None), \
     preprocess.Dictionary(tags), \
     preprocess.Dictionary(rels)
 
-embs_word = wd.get_pret_embs()
+
+embs_word = wd.get_pret_embs() if config.pret_embs else None
 
 wd.add_entries(words_dev)
 td.add_entries(tags_dev)
