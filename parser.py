@@ -129,11 +129,10 @@ class Parser(object):
         else:
             self.V_r_arc = self._pc.add_parameters((self._arc_dim))
             self.V_i_arc = self._pc.add_parameters((self._arc_dim))
-            self.bias_arc = self._pc.add_parameters((self._arc_dim))
+            self.bias_arc = self._pc.add_parameters((self._arc_dim * 2))
             self.V_r_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r))
             self.V_i_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r))
-            self.bias_x_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r))
-            self.bias_y_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r))
+            self.bias_rel = self._pc.add_parameters((self._rel_dim * self._vocab_size_r * 2))
 
         return
 
@@ -228,15 +227,16 @@ class Parser(object):
             W_i_arc = dy.parameter(self.V_i_arc)
             bias_arc = dy.parameter(self.bias_arc)
 
-            logits_arc = utils.biED(embs_arc, W_r_arc, W_i_arc, embs_arc, seq_len, 1, bias_x=bias_arc, bias_y=bias_arc)
+            logits_arc = utils.biED(embs_arc, W_r_arc, W_i_arc, embs_arc, seq_len, 1, bias=bias_arc)
 
         flat_logits_arc = dy.reshape(logits_arc, (seq_len, ), seq_len)
+        flat_logits_arc = dy.pick_batch_elems(flat_logits_arc, [e for e in range(1, seq_len)])
 
-        loss_arc = dy.pickneglogsoftmax_batch(flat_logits_arc, [0] + heads)
+        loss_arc = dy.pickneglogsoftmax_batch(flat_logits_arc, heads)
 
         if not isTrain:
             preds_arc = logits_arc.npvalue().argmax(0)
-            num_cor_arc = np.sum(np.equal(np.equal(preds_arc[1:], heads), punct_mask))
+            num_cor_arc = np.sum(np.multiply(np.equal(preds_arc[1:], heads), punct_mask))
 
         if not config.las:
             return loss_arc, num_cor_arc, num_cor_rel
@@ -248,19 +248,19 @@ class Parser(object):
         else:
             V_r_rel = dy.parameter(self.V_r_rel)
             V_i_rel = dy.parameter(self.V_i_rel)
-            bias_x_rel = dy.parameter(self.bias_x_rel)
-            # bias_y_rel = dy.parameter(self.bias_y_rel)
+            bias_rel = dy.parameter(self.bias_rel)
 
-            logits_rel = utils.biED(embs_rel, V_r_rel, V_i_rel, embs_rel, seq_len, self._vocab_size_r, bias_x=bias_x_rel, bias_y=bias_x_rel)
+            logits_rel = utils.biED(embs_rel, V_r_rel, V_i_rel, embs_rel, seq_len, self._vocab_size_r, bias=bias_rel)
 
         flat_logits_rel = dy.reshape(logits_rel, (seq_len, self._vocab_size_r), seq_len)
+        flat_logits_rel = dy.pick_batch_elems(flat_logits_rel, [e for e in range(1, seq_len)])
 
-        partial_rel_logits = dy.pick_batch(flat_logits_rel, [0] + heads if isTrain else [0] + preds_arc)
+        partial_rel_logits = dy.pick_batch(flat_logits_rel, heads if isTrain else preds_arc[1:])
 
         if isTrain:
-            loss_rel = dy.sum_batches(dy.pickneglogsoftmax_batch(partial_rel_logits, [0] + rels))
+            loss_rel = dy.sum_batches(dy.pickneglogsoftmax_batch(partial_rel_logits, rels))
         else:
             preds_rel = partial_rel_logits.npvalue().argmax(0)
-            num_cor_rel = np.sum(np.equal(np.equal(preds_rel[1:], rels), punct_mask))
-        # return loss_arc + loss_rel, num_cor_arc, num_cor_rel
-        return loss_arc, num_cor_arc, num_cor_rel
+            num_cor_rel = np.sum(np.multiply(np.equal(preds_rel, rels), punct_mask))
+        return loss_arc + loss_rel, num_cor_arc, num_cor_rel
+        # return loss_arc, num_cor_arc, num_cor_rel

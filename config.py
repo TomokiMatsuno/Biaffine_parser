@@ -7,12 +7,15 @@ mlp_dim = 600
 arc_dim = 500
 orthonormal = True
 pret_embs = True
+add_bias = False
 
-small_model = not True
+small_model = True
 if small_model:
-    input_dim = hidden_dim = mlp_dim = arc_dim = 100
-    mlp_dim += 100
+    input_dim = hidden_dim = mlp_dim = arc_dim = 50
+    mlp_dim += 50
     layers = 1
+    pret_embs = False
+    orthonormal = False
 
 
 biaffine_bias_x_arc = True
@@ -40,7 +43,7 @@ save_file = "parameter"
 load_file_num = 17
 load_file = str(load_file_num) + "/parameter"
 
-isTest = True
+isTest = not True
 if isTest:
     pdrop = 0.0
     pdrop_embs = 0.0

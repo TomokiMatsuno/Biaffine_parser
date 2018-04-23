@@ -58,7 +58,7 @@ def bilinear(x, W, y, input_size, seq_len, batch_size, num_outputs = 1, bias_x =
     return blin
 
 
-def biED(x, V_r, V_i, y, seq_len, num_outputs, bias_x=None, bias_y=None):
+def biED(x, V_r, V_i, y, seq_len, num_outputs, bias):
 
     W_r = dy.concatenate_cols([V_r] * seq_len)
     W_i = dy.concatenate_cols([V_i] * seq_len)
@@ -70,12 +70,22 @@ def biED(x, V_r, V_i, y, seq_len, num_outputs, bias_x=None, bias_y=None):
 
     B = dy.inputTensor(np.zeros((seq_len * num_outputs, seq_len), dtype=np.float32))
 
-    if bias_x:
-        bias = dy.reshape(dy.concatenate_cols([bias_x] * seq_len), (seq_len * num_outputs, input_size // 2))
-        B += bias * (x_r + x_i)
-    if bias_y:
-        bias = dy.reshape(dy.concatenate_cols([bias_y] * seq_len), (seq_len * num_outputs, input_size // 2))
-        B += bias * (y_r + y_i)
+    # if bias_r and bias_i:
+    #     bias = dy.reshape(dy.concatenate_cols([dy.concatenate([bias_r, bias_i]) * seq_len]), (seq_len * num_outputs, input_size))
+    #     B += bias * dy.concatenate([x_r, x_i])
+    # if bias_i:
+    #     bias = dy.reshape(dy.concatenate_cols([bias_i] * seq_len), (seq_len * num_outputs, input_size // 2))
+    #     B += bias * x_i
+    if bias and config.add_bias:
+        bias_R = dy.transpose(dy.reshape(dy.concatenate([(dy.reshape(bias, (input_size, num_outputs)))] * seq_len), (input_size, num_outputs * seq_len)))
+        # bias_R = dy.reshape(bias_T, (seq_len * num_outputs, input_size))
+        # tmp = dy.reshape(dy.concatenate_cols([bias] * seq_len), (seq_len * num_outputs, input_size))
+        # B += tmp * x
+        B += bias_R * x
+        # tmp = dy.reshape(dy.concatenate_cols([bias] * seq_len), (seq_len * num_outputs, input_size))
+        B += dy.concatenate(y * [num_outputs]) * dy.concatenate_cols([bias] * seq_len)
+        # B += dy.reshape(dy.transpose(bias_R * y), (seq_len * num_outputs, seq_len))
+        # B += dy.reshape(tmp * y, (seq_len * num_outputs, seq_len))
 
     y_r = dy.concatenate([y_r] * num_outputs)
     y_i = dy.concatenate([y_i] * num_outputs)
