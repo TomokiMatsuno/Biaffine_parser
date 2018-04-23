@@ -55,6 +55,8 @@ class Parser(object):
         else:
             self._trainer = dy.AdadeltaTrainer(self._pc)
 
+        # self._trainer.set_clip_threshold(1.0)
+
         self.params = dict()
         if embs_word is None:
             self.lp_w = self._pc.add_lookup_parameters((word_size, input_dim), init=dy.ConstInitializer(0.))
@@ -139,8 +141,8 @@ class Parser(object):
         masks_w = np.random.binomial(1, 1 - pdrop, len(indices))
         masks_t = np.random.binomial(1, 1 - pdrop, len(indices))
         scales = [3. / (2. * mask_w + mask_t + 1e-12) for mask_w, mask_t in zip(masks_w, masks_t)]
-        masks_w = [mask_w * scale for mask_w, scale in zip(masks_w, scales)]
-        masks_t = [mask_t * scale for mask_t, scale in zip(masks_t, scales)]
+        masks_w = [1e-12 + mask_w * scale for mask_w, scale in zip(masks_w, scales)]
+        masks_t = [1e-12 + mask_t * scale for mask_t, scale in zip(masks_t, scales)]
         self._masks_w = preprocess.seq2ids(masks_w, indices)
         self._masks_t = preprocess.seq2ids(masks_t, indices)
 
@@ -260,4 +262,5 @@ class Parser(object):
         else:
             preds_rel = partial_rel_logits.npvalue().argmax(0)
             num_cor_rel = np.sum(np.equal(np.equal(preds_rel[1:], rels), punct_mask))
-        return loss_arc + loss_rel, num_cor_arc, num_cor_rel
+        # return loss_arc + loss_rel, num_cor_arc, num_cor_rel
+        return loss_arc, num_cor_arc, num_cor_rel

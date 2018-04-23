@@ -118,7 +118,7 @@ def orthonormal_initializer(output_size, input_size):
     lr = .1
     eps = .05/(output_size + input_size)
     success = False
-    tries = 0 if config.orthonormal else 10
+    tries = 0 if config.orthonormal and not config.isTest else 10
     while not success and tries < 10:
         Q = np.random.randn(input_size, output_size) / np.sqrt(output_size)
         for i in range(100):

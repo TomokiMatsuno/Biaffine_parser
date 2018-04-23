@@ -14,6 +14,10 @@ import config
 import timer
 
 timer = timer.Timer()
+
+# if not config.isTest:
+    # dir_save = preprocess.make_dir(paths.save_file_directory)
+    # preprocess.save_codes(dir_save)
 # preprocess.out2file()
 
 # files_train = glob.glob(paths.path2WSJ + '00/*')
@@ -141,7 +145,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
 
         if (step % config.batch_size == 0 or step == len(word_ids) - 1) and isTrain:
             # print(step, "\t/\t", len(sent_ids), flush=True)
-            losses = dy.esum(losses)
+            losses = dy.esum(losses) / parser._mlp_dim
             losses_value_arc = losses.value()
             losses.backward()
             # parser._trainer.update()

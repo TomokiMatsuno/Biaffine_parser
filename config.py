@@ -5,10 +5,10 @@ pdrop_embs = 0.33
 layers = 3
 mlp_dim = 600
 arc_dim = 500
-orthonormal = False
-pret_embs = False
+orthonormal = True
+pret_embs = True
 
-small_model = True
+small_model = not True
 if small_model:
     input_dim = hidden_dim = mlp_dim = arc_dim = 100
     mlp_dim += 100
@@ -37,10 +37,10 @@ show_acc = 1000
 minimal_count = 2
 early_stop = 30
 save_file = "parameter"
-load_file_num = 14
+load_file_num = 17
 load_file = str(load_file_num) + "/parameter"
 
-isTest = False
+isTest = True
 if isTest:
     pdrop = 0.0
     pdrop_embs = 0.0
