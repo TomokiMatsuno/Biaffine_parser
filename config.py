@@ -1,6 +1,7 @@
 input_dim = 100
 hidden_dim = 400
-pdrop = 0.1
+pdrop_mlp = 0.1
+pdrop_lstm = 0.33
 pdrop_embs = 0.33
 layers = 3
 mlp_dim = 600

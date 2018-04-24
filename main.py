@@ -80,8 +80,9 @@ parser = parser.Parser(
     len(rd.i2x),
     config.input_dim,
     config.hidden_dim,
-    config.pdrop,
     config.pdrop_embs,
+    config.pdrop_lstm,
+    config.pdrop_mlp,
     config.layers,
     config.mlp_dim,
     config.arc_dim,
@@ -109,8 +110,9 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
     tot_cor_rel = 0
 
     step = 0
-    parser._pdrop = config.pdrop * isTrain
     parser._pdrop_embs = config.pdrop_embs * isTrain
+    parser._pdrop_lstm = config.pdrop_lstm * isTrain
+    parser._pdrop_mlp = config.pdrop_mlp * isTrain
     parser.embd_mask_generator(parser._pdrop_embs, indices)
 
     sent_ids = [i for i in range(len(word_ids))]
@@ -145,7 +147,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
 
         if (step % config.batch_size == 0 or step == len(word_ids) - 1) and isTrain:
             # print(step, "\t/\t", len(sent_ids), flush=True)
-            losses = dy.esum(losses) / parser._mlp_dim
+            losses = dy.esum(losses)
             losses_value_arc = losses.value()
             losses.backward()
             # parser._trainer.update()

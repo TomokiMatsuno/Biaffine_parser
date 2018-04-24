@@ -13,8 +13,9 @@ class Parser(object):
                  rel_size,
                  input_dim,
                  hidden_dim,
-                 pdrop,
                  pdrop_embs,
+                 pdrop_lstm,
+                 pdrop_mlp,
                  layers,
                  mlp_dim,
                  arc_dim,
@@ -72,9 +73,9 @@ class Parser(object):
         # else:
         #     self.l2r_lstm = utils.orthonormal_VanillaLSTMBuilder(layers, input_dim * 2, hidden_dim, self._pc)
         #     self.r2l_lstm = utils.orthonormal_VanillaLSTMBuilder(layers, input_dim * 2, hidden_dim, self._pc)
-
-        self._pdrop = pdrop
         self._pdrop_embs = pdrop_embs
+        self._pdrop_lstm = pdrop_lstm
+        self._pdrop_mlp = pdrop_mlp
 
         # self.mlp_dep = self._pc.add_parameters((mlp_dim, hidden_dim * 2))
         # self.mlp_head = self._pc.add_parameters((mlp_dim, hidden_dim * 2))
@@ -139,9 +140,12 @@ class Parser(object):
     def embd_mask_generator(self, pdrop, indices):
         masks_w = np.random.binomial(1, 1 - pdrop, len(indices))
         masks_t = np.random.binomial(1, 1 - pdrop, len(indices))
-        scales = [3. / (2. * mask_w + mask_t + 1e-12) for mask_w, mask_t in zip(masks_w, masks_t)]
-        masks_w = [1e-12 + mask_w * scale for mask_w, scale in zip(masks_w, scales)]
-        masks_t = [1e-12 + mask_t * scale for mask_t, scale in zip(masks_t, scales)]
+        # scales = [3. / (2. * mask_w + mask_t + 1e-12) for mask_w, mask_t in zip(masks_w, masks_t)]
+        scales = [2. / (mask_w + mask_t + 1e-12) for mask_w, mask_t in zip(masks_w, masks_t)]
+        # masks_w = [1e-12 + mask_w * scale for mask_w, scale in zip(masks_w, scales)]
+        # masks_t = [1e-12 + mask_t * scale for mask_t, scale in zip(masks_t, scales)]
+        masks_w = [mask_w * scale for mask_w, scale in zip(masks_w, scales)]
+        masks_t = [mask_t * scale for mask_t, scale in zip(masks_t, scales)]
         self._masks_w = preprocess.seq2ids(masks_w, indices)
         self._masks_t = preprocess.seq2ids(masks_t, indices)
 
@@ -163,7 +167,7 @@ class Parser(object):
         #tokens in the sentence and root
         seq_len = len(words) + 1
 
-        punct_mask = np.array([1 if rel != self._punct_id else 0 for rel in rels])
+        punct_mask = np.array([1 if rel != self._punct_id else 0 for rel in rels], dtype=np.uint32)
 
         preds_arc = []
         preds_rel = []
@@ -193,10 +197,10 @@ class Parser(object):
         lstm_ins = [dy.concatenate([emb_w, emb_t]) for emb_w, emb_t in zip(embs_w, embs_t)]
         # lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
         # lstm_outs = dy.concatenate_cols(utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
-        lstm_outs = dy.concatenate_cols(utils.biLSTM(self.LSTM_builders, lstm_ins, None, self._pdrop, self._pdrop))
+        lstm_outs = dy.concatenate_cols(utils.biLSTM(self.LSTM_builders, lstm_ins, None, self._pdrop_lstm, self._pdrop_lstm))
 
-        if isTrain:
-            lstm_outs = dy.dropout(lstm_outs, self._pdrop)
+        # if isTrain:
+        #     lstm_outs = dy.dropout(lstm_outs, self._pdrop)
 
         if config.biaffine:
             embs_dep, embs_head = \
@@ -204,7 +208,7 @@ class Parser(object):
                 utils.leaky_relu(dy.affine_transform([mlp_head_bias, mlp_head, lstm_outs]))
 
             if isTrain:
-                embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop), dy.dropout(embs_head, self._pdrop)
+                embs_dep, embs_head = dy.dropout(embs_dep, self._pdrop_mlp), dy.dropout(embs_head, self._pdrop_mlp)
 
             dep_arc, dep_rel = embs_dep[:self._arc_dim], embs_dep[self._arc_dim:]
             head_arc, head_rel = embs_head[:self._arc_dim], embs_head[self._arc_dim:]
@@ -219,7 +223,7 @@ class Parser(object):
             embs = \
                 utils.leaky_relu(dy.affine_transform([mlp_bias, mlp, lstm_outs]))
             if isTrain:
-                embs = dy.dropout(embs, self._pdrop)
+                embs = dy.dropout(embs, self._pdrop_mlp)
 
             embs_arc, embs_rel = embs[:self._arc_dim * 2], embs[self._arc_dim * 2:]
 
@@ -236,7 +240,8 @@ class Parser(object):
 
         if not isTrain:
             preds_arc = logits_arc.npvalue().argmax(0)
-            num_cor_arc = np.sum(np.multiply(np.equal(preds_arc[1:], heads), punct_mask))
+            cor_arcs = np.multiply(np.equal(preds_arc[1:], heads), punct_mask)
+            num_cor_arc = np.sum(cor_arcs)
 
         if not config.las:
             return loss_arc, num_cor_arc, num_cor_rel
@@ -261,6 +266,6 @@ class Parser(object):
             loss_rel = dy.sum_batches(dy.pickneglogsoftmax_batch(partial_rel_logits, rels))
         else:
             preds_rel = partial_rel_logits.npvalue().argmax(0)
-            num_cor_rel = np.sum(np.multiply(np.equal(preds_rel, rels), punct_mask))
+            num_cor_rel = np.sum(np.multiply(np.equal(preds_rel, rels), cor_arcs))
         return loss_arc + loss_rel, num_cor_arc, num_cor_rel
         # return loss_arc, num_cor_arc, num_cor_rel
