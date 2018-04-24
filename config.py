@@ -7,7 +7,7 @@ mlp_dim = 600
 arc_dim = 500
 orthonormal = True
 pret_embs = True
-add_bias = False
+add_bias = True
 
 small_model = True
 if small_model:

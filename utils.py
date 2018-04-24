@@ -82,8 +82,21 @@ def biED(x, V_r, V_i, y, seq_len, num_outputs, bias):
         # tmp = dy.reshape(dy.concatenate_cols([bias] * seq_len), (seq_len * num_outputs, input_size))
         # B += tmp * x
         B += bias_R * x
+        bias_T = dy.transpose(B)
+
+        # dy.transpose(dy.concatenate_cols([dy.reshape(bias, (input_size, ), num_outputs)] * seq_len))
+
+
+        if num_outputs == 1:
+            B += bias_T
+        else:
+            tmp = []
+            for i in range(num_outputs):
+                tmp.append(dy.transpose(B[i * seq_len: (i + 1) * (seq_len)]))
+
+            B += dy.concatenate(tmp)
         # tmp = dy.reshape(dy.concatenate_cols([bias] * seq_len), (seq_len * num_outputs, input_size))
-        B += dy.concatenate(y * [num_outputs]) * dy.concatenate_cols([bias] * seq_len)
+        # B += dy.concatenate(y * [num_outputs]) * dy.concatenate_cols([bias] * seq_len)
         # B += dy.reshape(dy.transpose(bias_R * y), (seq_len * num_outputs, seq_len))
         # B += dy.reshape(tmp * y, (seq_len * num_outputs, seq_len))
 
