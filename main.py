@@ -174,6 +174,9 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
             print(parser._best_score)
             print(parser._best_score_las)
 
+        if config.small_model and step % config.batch_size == 0:
+            break
+
 timer.from_prev()
 
 for e in range(config.epoc):

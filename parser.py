@@ -239,7 +239,12 @@ class Parser(object):
         loss_arc = dy.pickneglogsoftmax_batch(flat_logits_arc, heads)
 
         if not isTrain:
-            preds_arc = logits_arc.npvalue().argmax(0)
+            msk = [1] * seq_len
+            arc_probs = dy.softmax(logits_arc).npvalue()
+            arc_probs = np.transpose(arc_probs)
+            preds_arc = utils.arc_argmax(arc_probs, seq_len, msk, ensure_tree=True)
+
+            # preds_arc = logits_arc.npvalue().argmax(0)
             cor_arcs = np.multiply(np.equal(preds_arc[1:], heads), punct_mask)
             num_cor_arc = np.sum(cor_arcs)
 

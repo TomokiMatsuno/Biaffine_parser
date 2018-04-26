@@ -50,5 +50,5 @@ if isTest:
     pdrop_embs = 0.0
 
 las = True
-biaffine = False
+biaffine = True
 
