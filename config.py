@@ -6,14 +6,14 @@ pdrop_embs = 0.33
 layers = 3
 mlp_dim = 600
 arc_dim = 500
-orthonormal = True
-pret_embs = True
+orthonormal = not True
+pret_embs = not True
 add_bias = True
 
-small_model = True
+small_model = not True
 if small_model:
-    input_dim = hidden_dim = mlp_dim = arc_dim = 50
-    mlp_dim += 50
+    input_dim = hidden_dim = mlp_dim = arc_dim = 100
+    mlp_dim += 100
     layers = 1
     pret_embs = False
     orthonormal = False

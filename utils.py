@@ -16,7 +16,8 @@ def bilstm(l2rlstm, r2llstm, inputs, pdrop):
     l2r_outs = s_l2r.add_inputs(inputs)
     r2l_outs = s_r2l.add_inputs(reversed(inputs))
 
-    lstm_outs = [dy.concatenate([l2r_outs[i].output(), r2l_outs[i].output()]) for i in range(len(l2r_outs))]
+    # lstm_outs = [dy.concatenate([l2r_outs[i].output(), r2l_outs[i].output()]) for i in range(len(l2r_outs))]
+    lstm_outs = [dy.concatenate([l2r.output(), r2l.output()]) for l2r, r2l in zip(l2r_outs, reversed(r2l_outs))]
     # l2r_outs = [l2r_outs[i].output() for i in range(len(l2r_outs))]
     # r2l_outs = [r2l_outs[i].output() for i in range(len(r2l_outs))]
 
@@ -61,11 +62,14 @@ def bilinear(x, W, y, input_size, seq_len, batch_size, num_outputs = 1, bias_x =
 
 def biED(x, V_r, V_i, y, seq_len, num_outputs, bias):
 
-    W_r = dy.concatenate_cols([V_r] * seq_len)
-    W_i = dy.concatenate_cols([V_i] * seq_len)
+    # W_r = dy.concatenate_cols([V_r] * seq_len)
+    # W_i = dy.concatenate_cols([V_i] * seq_len)
 
     input_size = x.dim()[0][0]
+    W_size = V_r.dim()[0][0]
 
+    W_r = dy.reshape(V_r, (input_size // 2,), num_outputs)
+    W_i = dy.reshape(V_i, (input_size // 2,), num_outputs)
     x_r, x_i = x[:- input_size // 2], x[input_size // 2:]
     y_r, y_i = y[:- input_size // 2], y[input_size // 2:]
 
@@ -101,13 +105,13 @@ def biED(x, V_r, V_i, y, seq_len, num_outputs, bias):
         # B += dy.reshape(dy.transpose(bias_R * y), (seq_len * num_outputs, seq_len))
         # B += dy.reshape(tmp * y, (seq_len * num_outputs, seq_len))
 
-    y_r = dy.concatenate([y_r] * num_outputs)
-    y_i = dy.concatenate([y_i] * num_outputs)
+    # y_r = dy.concatenate([y_r] * num_outputs)
+    # y_i = dy.concatenate([y_i] * num_outputs)
 
     X = dy.concatenate([x_r, x_i, x_r, -x_i])
     Y = dy.concatenate([y_r, y_i, y_i, -y_r])
     W = dy.concatenate([W_r, W_r, W_i, -W_i])
-    WY = dy.reshape(dy.cmult(W, Y), (input_size // 2 * 4, seq_len * num_outputs))
+    WY = dy.reshape(dy.cmult(W, Y), (input_size * 2, seq_len * num_outputs))
     blin = dy.transpose(X) * WY + dy.reshape(B, (seq_len, seq_len * num_outputs))
 
     if num_outputs > 1:

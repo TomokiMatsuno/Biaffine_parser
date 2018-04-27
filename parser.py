@@ -77,37 +77,22 @@ class Parser(object):
         self._pdrop_lstm = pdrop_lstm
         self._pdrop_mlp = pdrop_mlp
 
-        # self.mlp_dep = self._pc.add_parameters((mlp_dim, hidden_dim * 2))
-        # self.mlp_head = self._pc.add_parameters((mlp_dim, hidden_dim * 2))
-        # self.mlp_dep_bias = self._pc.add_parameters(mlp_dim)
-        # self.mlp_head_bias = self._pc.add_parameters(mlp_dim)
+        self.LSTM_builders = []
+
+        # f = utils.orthonormal_VanillaLSTMBuilder(layers, input_dim * 2, hidden_dim, self._pc)
+        # b = utils.orthonormal_VanillaLSTMBuilder(layers, input_dim * 2, hidden_dim, self._pc)
         #
-        # self.W_arc = self._pc.add_parameters((self._arc_dim + biaffine_bias_y_arc, self._arc_dim + biaffine_bias_x_arc))
-        # self.W_rel = self._pc.add_parameters(((self._rel_dim + biaffine_bias_y_rel) * self._vocab_size_r, self._rel_dim + biaffine_bias_x_rel))
-        if config.isTest:
-            self.LSTM_builders = []
-            f = dy.VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
-            b = dy.VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
+        # self.LSTM_builders = [f, b]
 
+        f = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
+        b = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
+
+        self.LSTM_builders.append((f, b))
+        for i in range(layers - 1):
+            f = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
+            b = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
             self.LSTM_builders.append((f, b))
-            for i in range(layers - 1):
-                f = dy.VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-                b = dy.VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-                self.LSTM_builders.append((f, b))
-        else:
-            self.LSTM_builders = []
-            f = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
-            b = utils.orthonormal_VanillaLSTMBuilder(1, input_dim * 2, hidden_dim, self._pc)
 
-            self.LSTM_builders.append((f, b))
-            for i in range(layers - 1):
-                f = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-                b = utils.orthonormal_VanillaLSTMBuilder(1, 2 * hidden_dim, hidden_dim, self._pc)
-                self.LSTM_builders.append((f, b))
-        # self.dropout_lstm_input = dropout_lstm_input
-        # self.dropout_lstm_hidden = dropout_lstm_hidden
-
-        # mlp_size = mlp_arc_size + mlp_rel_size
         if config.biaffine:
             W = utils.orthonormal_initializer(mlp_dim, 2 * hidden_dim)
             self.mlp_dep = self._pc.parameters_from_numpy(W)
@@ -196,7 +181,7 @@ class Parser(object):
 
         lstm_ins = [dy.concatenate([emb_w, emb_t]) for emb_w, emb_t in zip(embs_w, embs_t)]
         # lstm_outs = dy.concatenate_cols([self.emb_root[0]] + utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
-        # lstm_outs = dy.concatenate_cols(utils.bilstm(self.l2r_lstm, self.r2l_lstm, lstm_ins, self._pdrop))
+        # lstm_outs = dy.concatenate_cols(utils.bilstm(self.LSTM_builders[0], self.LSTM_builders[1], lstm_ins, self._pdrop_lstm))
         lstm_outs = dy.concatenate_cols(utils.biLSTM(self.LSTM_builders, lstm_ins, None, self._pdrop_lstm, self._pdrop_lstm))
 
         # if isTrain:
@@ -233,13 +218,15 @@ class Parser(object):
 
             logits_arc = utils.biED(embs_arc, W_r_arc, W_i_arc, embs_arc, seq_len, 1, bias=bias_arc)
 
+        # flat_logits_arc = dy.reshape(logits_arc[:][1:], (seq_len,), seq_len - 1)
         flat_logits_arc = dy.reshape(logits_arc, (seq_len, ), seq_len)
         flat_logits_arc = dy.pick_batch_elems(flat_logits_arc, [e for e in range(1, seq_len)])
 
         loss_arc = dy.pickneglogsoftmax_batch(flat_logits_arc, heads)
 
         if not isTrain:
-            msk = [1] * seq_len
+            # msk = [1] * seq_len
+            msk = np.ones((seq_len), dtype='int32')
             arc_probs = dy.softmax(logits_arc).npvalue()
             arc_probs = np.transpose(arc_probs)
             preds_arc = utils.arc_argmax(arc_probs, seq_len, msk, ensure_tree=True)
@@ -262,6 +249,7 @@ class Parser(object):
 
             logits_rel = utils.biED(embs_rel, V_r_rel, V_i_rel, embs_rel, seq_len, self._vocab_size_r, bias=bias_rel)
 
+        # flat_logits_rel = dy.reshape(logits_rel[:][1:], (seq_len, self._vocab_size_r), seq_len - 1)
         flat_logits_rel = dy.reshape(logits_rel, (seq_len, self._vocab_size_r), seq_len)
         flat_logits_rel = dy.pick_batch_elems(flat_logits_rel, [e for e in range(1, seq_len)])
 

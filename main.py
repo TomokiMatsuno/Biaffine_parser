@@ -29,6 +29,9 @@ if not config.isTest:
 else:
     files_dev = [f for f in glob.glob(paths.path2WSJ + 'wsj_predPOS/*/*') if not "/23" in f]
 
+if config.small_model:
+    files_train = files_dev
+
 # df_train = preprocess.files2DataFrame(files_train, '\t')
 # df_dev = preprocess.files2DataFrame(files_dev, '\t')
 df_train = preprocess.files2DataFrame(files_train, '\t')
@@ -116,6 +119,12 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
     parser.embd_mask_generator(parser._pdrop_embs, indices)
 
     sent_ids = [i for i in range(len(word_ids))]
+
+    if config.small_model:
+        num_sents = 10000 if isTrain else 10
+        sent_ids = sent_ids[:num_sents]
+
+
     if isTrain:
         np.random.shuffle(sent_ids)
 
@@ -158,7 +167,7 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
             dy.renew_cg()
             parser._global_step += 1
 
-        if (not isTrain) and step == len(word_ids) - 1:
+        if (not isTrain) and step == len(sent_ids) - 1:
             score = (tot_cor_arc / tot_tokens)
             score_label = (tot_cor_rel / tot_tokens)
             print(score)
@@ -173,9 +182,6 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
 
             print(parser._best_score)
             print(parser._best_score_las)
-
-        if config.small_model and step % config.batch_size == 0:
-            break
 
 timer.from_prev()
 
