@@ -165,7 +165,8 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
                 print(losses_value_arc)
             losses = []
             dy.renew_cg()
-            parser._global_step += 1
+            if config.adam:
+                parser._global_step += 1
 
         if (not isTrain) and step == len(sent_ids) - 1:
             score = (tot_cor_arc / tot_tokens)
@@ -182,6 +183,9 @@ def train_dev(word_ids, tag_ids, head_ids, rel_ids, indices, isTrain):
 
             print(parser._best_score)
             print(parser._best_score_las)
+
+            if not config.adam:
+                parser._global_step += 1
 
 timer.from_prev()
 
