@@ -51,10 +51,12 @@ class Parser(object):
 
         self._pc = dy.ParameterCollection()
 
-        if config.use_annealing:
+        if config.adam:
             self._trainer = dy.AdamTrainer(self._pc, config.learning_rate, config.beta_1, config.beta_2, config.epsilon)
         else:
-            self._trainer = dy.AdadeltaTrainer(self._pc)
+            # self._trainer = dy.AdadeltaTrainer(self._pc)
+            trainer = dy.SimpleSGDTrainer(self._pc, config.learning_rate)
+            trainer.set_clip_threshold(config.clip_threshold)
 
         # self._trainer.set_clip_threshold(1.0)
 
@@ -220,7 +222,8 @@ class Parser(object):
 
         # flat_logits_arc = dy.reshape(logits_arc[:][1:], (seq_len,), seq_len - 1)
         flat_logits_arc = dy.reshape(logits_arc, (seq_len, ), seq_len)
-        flat_logits_arc = dy.pick_batch_elems(flat_logits_arc, [e for e in range(1, seq_len)])
+        # flat_logits_arc = dy.pick_batch_elems(flat_logits_arc, [e for e in range(1, seq_len)])
+        flat_logits_arc = dy.pick_batch_elems(flat_logits_arc, np.arange(1, seq_len, dtype='int32'))
 
         loss_arc = dy.pickneglogsoftmax_batch(flat_logits_arc, heads)
 
@@ -251,7 +254,8 @@ class Parser(object):
 
         # flat_logits_rel = dy.reshape(logits_rel[:][1:], (seq_len, self._vocab_size_r), seq_len - 1)
         flat_logits_rel = dy.reshape(logits_rel, (seq_len, self._vocab_size_r), seq_len)
-        flat_logits_rel = dy.pick_batch_elems(flat_logits_rel, [e for e in range(1, seq_len)])
+        # flat_logits_rel = dy.pick_batch_elems(flat_logits_rel, [e for e in range(1, seq_len)])
+        flat_logits_rel = dy.pick_batch_elems(flat_logits_rel, np.arange(1, seq_len, dtype='int32'))
 
         partial_rel_logits = dy.pick_batch(flat_logits_rel, heads if isTrain else preds_arc[1:])
 
